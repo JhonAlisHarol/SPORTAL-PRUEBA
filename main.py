@@ -105,8 +105,8 @@ else:
     st.dataframe(pd.DataFrame(columns=columnas_base), use_container_width=True)
     st.markdown("---")
 
-    def extraer_datos_pdf_blindado(ruta_pdf, nombre_archivo_original=""):
-        """Extracción blindada: si un PDF falla o da error, no tumba el proceso masivo."""
+    def extraer_datos_pdf_robusto(ruta_pdf, nombre_archivo_original=""):
+        """Extracción robusta: extrae texto, coordenadas, operador y asegura el código desde el nombre o contenido."""
         try:
             reader = PdfReader(ruta_pdf)
             texto_completo = ""
@@ -124,11 +124,16 @@ else:
                 "Fecha 4": "", "Hora 4": "", "Reporte 4": ""
             }
 
+            # 1. Buscar código en el contenido del PDF
             match_inc = re.search(r'(P\d{10,12})', texto_completo)
             if match_inc:
                 datos["Incidente"] = match_inc.group(1)
-            elif re.search(r'(P\d{10,12})', datos["Archivo"]):
-                datos["Incidente"] = re.search(r'(P\d{10,12})', datos["Archivo"]).group(1)
+            
+            # 2. Si no está en el texto, buscarlo directamente en el nombre del archivo (ej. Incidente_P20260000001.pdf)
+            if not datos["Incidente"]:
+                match_arch = re.search(r'(P\d{10,12})', datos["Archivo"])
+                if match_arch:
+                    datos["Incidente"] = match_arch.group(1)
 
             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
             ops = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE GIERHART", "JOAQUIN CHI", "DALILA TREJOS", "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"]
@@ -168,7 +173,7 @@ else:
 
             return datos
         except Exception:
-            return None # Si un archivo individual falla, devuelve vacío limpiamente sin frenar los demás
+            return None
 
     archivo_zip = st.file_uploader(
         "Sube tu paquete comprimido (.zip) con los más de 30k PDFs (Soporta archivos grandes de varios GBs):", 
@@ -211,8 +216,12 @@ else:
                     
                     for i, ruta_pdf in enumerate(archivos_pdf):
                         nombre_original = os.path.basename(ruta_pdf)
-                        info_caso = extraer_datos_pdf_blindado(ruta_pdf, nombre_original)
-                        if info_caso and info_caso["Incidente"]:
+                        info_caso = extraer_datos_pdf_robusto(ruta_pdf, nombre_original)
+                        
+                        # Si se extrajo el archivo correctamente (aunque no tenga tipo/subtipo exacto, pero tiene nombre o incidente), lo guardamos
+                        if info_caso:
+                            if not info_caso["Incidente"]:
+                                info_caso["Incidente"] = "S/N"
                             lista_resultados.append(info_caso)
 
                         if i % 100 == 0 or i == total_archivos - 1:
@@ -222,7 +231,7 @@ else:
 
                     if lista_resultados:
                         df_resultado = pd.DataFrame(lista_resultados)
-                        st.success(f"¡Procesamiento masivo completado con éxito! Total de registros válidos extraídos: {len(df_resultado):,}")
+                        st.success(f"¡Procesamiento masivo completado con éxito! Total de registros procesados: {len(df_resultado):,}")
                         st.dataframe(df_resultado.head(50), use_container_width=True)
 
                         df_resultado.to_excel(nombre_excel, index=False)
@@ -234,7 +243,7 @@ else:
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
                     else:
-                        st.error("No se pudo extraer información estructurada de los PDFs. Revisa que los archivos contengan texto seleccionable.")
+                        st.error("No se pudo procesar la información de los PDFs.")
                 else:
                     st.warning("No se encontró ningún archivo PDF dentro del archivo ZIP.")
     else:
