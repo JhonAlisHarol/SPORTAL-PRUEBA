@@ -27,7 +27,7 @@ st.dataframe(df_vacio, use_container_width=True)
 st.markdown("---")
 
 def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
-    """Extracción optimizada y veloz con manejo seguro de datos."""
+    """Extracción optimizada capturando la ubicación tal cual como viene en el PDF."""
     try:
         reader = PdfReader(ruta_pdf)
         texto_completo = ""
@@ -68,7 +68,7 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
             "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"
         ]
 
-        # Detección segura de Zona y Operador
+        # Detección de Zona, Operador y Ubicación exacta del PDF
         for i, linea in enumerate(lineas):
             linea_up = linea.upper()
             
@@ -77,10 +77,22 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
                     datos["Operador"] = op
                     break
             
-            # Corrección del tipo de dato (número entero en lugar de texto)
             if (re.search(r'\b\d{0,2}[A-Z]{1,3}\b', linea) and len(linea) <= 6) and ("ZP" in linea_up or "ZF" in linea_up or "ZONA" in linea_up):
                 if datos["Zona"] == "N/A":
                     datos["Zona"] = linea
+
+            # Capturar la línea de ubicación tal cual como aparece en el reporte oficial
+            if "UBICACION" in linea_up or "DIRECCION" in linea_up or "LUGAR" in linea_up:
+                if i + 1 < len(lineas):
+                    datos["Ubicación"] = lineas[i + 1]
+
+        # Si no la encontró por etiqueta directa, buscar respaldos limpios
+        if datos["Ubicación"] == "N/A":
+            for l in lineas:
+                l_up = l.upper()
+                if ("VERACRUZ" in l_up or "PALMAR" in l_up) and len(l) < 60:
+                    datos["Ubicación"] = l
+                    break
 
         # Extracción de Fechas, Horas y Reportes de la bitácora
         patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
@@ -118,15 +130,6 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
 
         if not marcas_tiempo and texto_completo:
             datos["Reporte 1"] = texto_completo[:500].replace("\n", " ").strip()
-
-        # Respaldo seguro para Ubicación limpia
-        for l in lineas:
-            l_up = l.upper()
-            if ("VERACRUZ" in l_up or "PALMAR" in l_up) and len(l) < 50 and "INIDCA" not in l_up and "SE PROCEDIO" not in l_up:
-                partes = l.split("LUGAR:")
-                ubi_final = partes[-1].strip() if len(partes) > 1 else l
-                datos["Ubicación"] = re.sub(r'[\.,;]+$', '', ubi_final)
-                break
 
         # Respaldo para Operador si aparece en el texto general
         if datos["Operador"] == "N/A":
