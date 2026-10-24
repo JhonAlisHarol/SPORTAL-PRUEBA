@@ -27,7 +27,7 @@ st.dataframe(df_vacio, use_container_width=True)
 st.markdown("---")
 
 def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
-    """Extracción optimizada y veloz con análisis inteligente de ubicación geográfica exacta."""
+    """Extracción optimizada y veloz con filtrado quirúrgico de ubicación."""
     try:
         reader = PdfReader(ruta_pdf)
         texto_completo = ""
@@ -77,7 +77,7 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
                     datos["Operador"] = op
                     break
             
-            if (re.search(r'\b\d{0,2}[A-Z]{1,3}\b', linea) and len(linea) <= 6) and ("ZP" in linea_up or "ZF" in linea_up or "ZONA" in linea_up):
+            if (re.search(r'\b\d{0,2}[A-Z]{1,3}\b', linea) and len(linea) <= "6") and ("ZP" in linea_up or "ZF" in linea_up or "ZONA" in linea_up):
                 if datos["Zona"] == "N/A":
                     datos["Zona"] = linea
 
@@ -118,25 +118,28 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
         if not marcas_tiempo and texto_completo:
             datos["Reporte 1"] = texto_completo[:500].replace("\n", " ").strip()
 
-        # 🧠 ANALIZADOR GEOGRÁFICO DE UBICACIÓN MAESTRA
-        texto_analisis = (datos["Reporte 1"] + " " + texto_completo)
+        # 🧠 FILTRO QUIRÚRGICO DE UBICACIÓN LIMPIA
+        # Buscamos de manera exacta el texto que va después de "LUGAR:" o "en/que en" dentro de la narrativa del primer reporte
+        texto_busqueda = datos["Reporte 1"] if datos["Reporte 1"] else texto_completo
         
-        # Patrón optimizado para capturar desde el sector/lugar hasta antes de que inicie la acción del evento
-        patron_ubi = re.search(r'(?:en|que en|ubicado en|lugar:?|punto sensitivo:?)\s+([^,]+(?:,\s*[^,]+){1,6}?)(?=\s+(?:se\s+está|se\s+esta|se\s+procedió|se\s+procedio|hay|reportan|ocurrió|ocurrio|con\s+la\s+finalidad|se\s+observo|se\s+observó|se\s+mantiene))', texto_analisis, re.IGNORECASE)
+        match_ubi_fina = re.search(r'(?:LUGAR:?|en|que en)\s+([^,]+(?:,\s*[^,]+){1,4}?)(?=\s+(?:se\s+está|se\s+esta|se\s+procedió|se\s+procedio|hay|reportan|ocurrió|ocurrio|con\s+la\s+finalidad|se\s+observo|se\s+observó))', texto_busqueda, re.IGNORECASE)
         
-        if patron_ubi:
-            ubi_limpia = patron_ubi.group(1).strip()
-            # Limpiar prefijos de etiquetas sueltas si las arrastró
-            ubi_limpia = re.sub(r'^(?:punto sensitivo:?|lugar:?)\s*', '', ubi_limpia, flags=re.IGNORECASE).strip()
-            ubi_limpia = re.sub(r'[\.,;]+$', '', ubi_limpia)
-            if len(ubi_limpia) > 3:
-                datos["Ubicación"] = ubi_limpia
+        if match_ubi_fina:
+            ubicacion_limpia = match_ubi_fina.group(1).strip()
+            # Remover cualquier residuo de etiquetas o puntuación extra
+            ubicacion_limpia = re.sub(r'^(?:LUGAR:?|PUNTO SENSITIVO:?)\s*', '', ubicacion_limpia, flags=re.IGNORECASE).strip()
+            ubicacion_limpia = re.sub(r'[\.,;]+$', '', ubicacion_limpia)
+            if len(ubicacion_limpia) > 3:
+                datos["Ubicación"] = ubicacion_limpia
         else:
-            # Respaldo secundario si la estructura varía ligeramente
+            # Respaldo directo si el formato varía ligeramente pero contiene el sector
             for l in lineas:
                 l_up = l.upper()
-                if ("VERACRUZ" in l_up or "PALMAR" in l_up or "COLON" in l_up) and len(l) < 50 and "INIDCA" not in l_up and "SE PROCEDIO" not in l_up:
-                    datos["Ubicación"] = l.replace("LUGAR:", "").strip()
+                if ("VERACRUZ" in l_up or "PALMAR" in l_up) and len(l) < 50 and "INIDCA" not in l_up and "SE PROCEDIO" not in l_up:
+                    # Extraer solo la parte del sitio
+                    partes = l.split("LUGAR:")
+                    ubi_final = partes[-1].strip() if len(partes) > 1 else l
+                    datos["Ubicación"] = re.sub(r'[\.,;]+$', '', ubi_final)
                     break
 
         # Respaldo para Operador si aparece en el texto general
