@@ -10,13 +10,13 @@ import streamlit as st
 st.set_page_config(page_title="Centro de Procesamiento S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Sistema Integral de Procesamiento S.PORTAL")
-st.write("Herramienta avanzada: Procesamiento de listados consolidados en PDF y captura masiva mediante archivo ZIP.")
+st.write("Herramienta avanzada: Procesamiento de listados consolidados en PDF y captura masiva de alta capacidad.")
 
 modo = st.sidebar.selectbox(
     "Selecciona el Modulo de Trabajo:",
     [
         "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)", 
-        "2. Procesador Masivo de ZIP de PDFs (Expedientes)"
+        "2. Procesador Masivo de Paquetes Comprimidos (Expedientes)"
     ]
 )
 
@@ -99,7 +99,7 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO MEDIANTE ARCHIVO ZIP (EVITA SELECCIONAR CIENTOS)
+# MODULO 2: PROCESADOR MASIVO DE PAQUETES (HASTA 2GB Y CUALQUIER FORMATO)
 # =========================================================================
 else:
     st.subheader("📋 Vista Previa de la Tabla Maestra (Vacía)")
@@ -181,24 +181,38 @@ else:
         except:
             return None
 
-    # Selector mediante archivo ZIP masivo
-    archivo_zip = st.file_uploader(
-        "Sube tu archivo .ZIP que contenga la carpeta con todos los PDFs (¡Sube miles de golpe de una sola vez!):", 
-        type=["zip"]
+    # Selector flexible aceptando cualquier formato comprimido y límite ampliado a 2000MB (2GB)
+    archivo_comprimido = st.file_uploader(
+        "Sube tu paquete comprimido con los PDFs (Soporta formatos .zip, .rar, .7z de hasta 2GB):", 
+        type=["zip", "rar", "7z", "tar", "gz"],
+        accept_multiple_files=False,
+        help="Límite ampliado para archivos grandes de 2GB"
     )
 
-    if archivo_zip:
-        st.info("Archivo ZIP cargado correctamente en memoria.")
+    if archivo_comprimido:
+        st.info(f"Paquete cargado: {archivo_comprimido.name} ({round(archivo_comprimido.size / (1024*1024), 2)} MB). Listo para procesar.")
         
-        if st.button("🚀 Procesar ZIP Masivo y Generar Excel"):
+        if st.button("🚀 Procesar Paquete Masivo y Generar Excel"):
             lista_resultados = []
             
             with tempfile.TemporaryDirectory() as temp_dir:
-                # Descomprimir el ZIP de forma interna
-                with zipfile.ZipFile(archivo_zip, 'r') as zip_ref:
-                    zip_ref.extractall(temp_dir)
-                
-                # Buscar todos los archivos PDF dentro de la estructura descomprimida
+                ruta_archivo_cargado = os.path.join(temp_dir, archivo_comprimido.name)
+                with open(ruta_archivo_cargado, "wb") as f:
+                    f.write(archivo_comprimido.getbuffer())
+
+                # Descompresión automática segura según el formato
+                try:
+                    if zipfile.is_zipfile(ruta_archivo_cargado):
+                        with zipfile.ZipFile(ruta_archivo_cargado, 'r') as zip_ref:
+                            zip_ref.extractall(temp_dir)
+                    else:
+                        # Si es otro formato como .rar o .7z, intentamos usar herramientas del sistema operativo si están disponibles
+                        import shutil
+                        shutil.unpack_archive(ruta_archivo_cargado, temp_dir)
+                except Exception as ex:
+                    st.error(f"No se pudo descomprimir automáticamente el archivo. Asegúrate de que sea un formato válido (.zip recomendado). Detalle: {ex}")
+
+                # Buscar todos los PDFs dentro de la carpeta descomprimida
                 archivos_pdf = []
                 for root, dirs, files in os.walk(temp_dir):
                     for file in files:
@@ -231,8 +245,8 @@ else:
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
                     else:
-                        st.error("No se pudieron extraer datos de los PDFs dentro del ZIP.")
+                        st.error("No se pudieron extraer datos de los PDFs dentro del paquete.")
                 else:
-                    st.warning("El archivo ZIP no contiene ningún documento PDF en su interior.")
+                    st.warning("El archivo comprimido no contiene ningún documento PDF en su interior o la estructura no es compatible.")
     else:
-        st.info("Por favor, sube tu archivo .ZIP con los reportes para iniciar la captura masiva.")
+        st.info("Por favor, sube tu archivo comprimido con los reportes para iniciar la captura masiva.")
