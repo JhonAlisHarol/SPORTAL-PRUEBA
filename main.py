@@ -3,136 +3,144 @@ import re
 import tempfile
 import pandas as pd
 from pypdf import PdfReader
-import requests
-from bs4 import BeautifulSoup
 import streamlit as st
 
-# Configuración de la página de Streamlit
-st.set_page_config(page_title="Procesador Maestro Automático S.PORTAL", page_icon="⚙️", layout="wide")
+# Configuración de la página
+st.set_page_config(page_title="Procesador Masivo de Listados S.PORTAL", page_icon="📊", layout="wide")
 
-st.title("⚙️ Procesador Masivo Automático con Detalles S.PORTAL")
-st.write("Sube el PDF de listado general. El sistema recorrerá automáticamente cada caso en la red interna para extraer el 100% de los detalles, operador, horas y reportes de la bitácora.")
+st.title("📊 Procesador Masivo y Automático de Listados S.PORTAL")
+st.write("Sube tu PDF masivo de listado general. El sistema extraerá y estructurará todos los casos de golpe en un archivo Excel maestro.")
 
-def extraer_detalles_incidente(incidente_id):
-    """Accede por red interna al detalle de cada incidente y extrae toda la bitácora y operador."""
-    url = f"http://c5-cad-app.c5.gob.pa/Tupa/PNPC5/Report/DetallesDelIncidente?Evento={incidente_id}"
-    datos_caso = {
-        "Incidente": incidente_id,
-        "Operador": "N/A",
-        "Fecha Creación": "",
-        "Hora Creación": "",
-        "Fecha 1": "", "Hora 1": "", "Reporte 1": "",
-        "Fecha 2": "", "Hora 2": "", "Reporte 2": "",
-        "Fecha 3": "", "Hora 3": "", "Reporte 3": "",
-        "Fecha 4": "", "Hora 4": "", "Reporte 4": ""
-    }
+def procesar_pdf_masivo(ruta_pdf):
+    """Procesa el PDF de listado general de S.PORTAL y extrae de forma limpia todos los incidentes."""
     try:
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            texto_pagina = soup.get_text()
+        reader = PdfReader(ruta_pdf)
+        texto_completo = ""
+        for pagina in reader.pages:
+            t = pagina.extract_text()
+            if t:
+                texto_completo += t + "\n"
 
-            # 1. Fecha y Hora de Creación
-            match_creacion = re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})', texto_pagina)
-            if match_creacion:
-                datos_caso["Fecha Creación"] = match_creacion.group(1)
-                datos_caso["Hora Creación"] = match_creacion.group(2)
-
-            # 2. Operador
-            posibles_nombres = [
-                "ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE GIERHART", 
-                "JOAQUIN CHI", "DALILA TREJOS", "RICARDO EMILIO MAYORGA LORENZO", "HERMOGENES SANJUR", 
-                "ANTONIO PATRICIO", "ARMANDO GONZALEZ", "ESTEBAN E. HERNANDEZ H.", "YARIBETH M. ESCUDERO H.",
-                "MARIA ISABEL MADRID CASTILLO", "DORIAN GREAVES", "ANGELICA RODRIGUEZ", "ERICK ROSALES SANCHEZ JIRON",
-                "LEOPOLDO SERRANO BROWN", "JERRY JORDAN", "PABLO GONZALEZ", "ANGEL JORDAN"
-            ]
-            for nom in posibles_nombres:
-                if nom in texto_pagina.upper():
-                    datos_caso["Operador"] = nom
-                    break
-
-            # 3. Marcas de tiempo adicionales y Reportes (1 a 4)
-            patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
-            matches = list(re.finditer(patron_fh, texto_pagina))
+        # Limpiar y separar por líneas
+        lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
+        casos_extraidos = []
+        
+        i = 0
+        while i < len(lineas):
+            linea = lineas[i]
             
-            marcas = []
-            for m in matches:
-                f_val = m.group(1)
-                h_val = m.group(2)
-                pos = m.start()
-                if not (f_val == datos_caso["Fecha Creación"] and h_val == datos_caso["Hora Creación"] and len(marcas) == 0):
-                    marcas.append({"fecha": f_val, "hora": h_val, "pos": pos})
+            # Buscar el código del incidente (Ej: P20260238869)
+            match_inc = re.search(r'(P\d{10,12})', linea)
+            if match_inc:
+                incidente_id = match_inc.group(1)
+                
+                tipo = "N/A"
+                subtipo = "N/A"
+                zona = "N/A"
+                fecha_creacion = ""
+                hora_creacion = ""
+                operador = "N/A"
+                
+                # Tomar un bloque de contexto alrededor de la línea actual
+                contexto_bloque = " ".join(lineas[i:i+8])
+                
+                # Extraer Fecha y Hora de Creación
+                match_fh = re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})', contexto_bloque)
+                if match_fh:
+                    fecha_creacion = match_fh.group(1)
+                    hora_creacion = match_fh.group(2)
+                
+                # Extraer Zona (Patrones como 12ZP, 8ZP, TRAN, etc.)
+                match_zn = re.search(r'\b(\d{1,2}[A-Z]{1,3}|TRAN)\b', contexto_bloque)
+                if match_zn:
+                    zona = match_zn.group(1)
 
-            for idx_m, marca in enumerate(marcas[:4], start=1):
-                datos_caso[f"Fecha {idx_m}"] = marca["fecha"]
-                datos_caso[f"Hora {idx_m}"] = marca["hora"]
+                # Extraer Operador por nombres frecuentes del C5
+                posibles_nombres = [
+                    "ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE GIERHART", 
+                    "JOAQUIN CHI", "DALILA TREJOS", "RICARDO EMILIO MAYORGA LORENZO", "HERMOGENES SANJUR", 
+                    "ANTONIO PATRICIO", "ARMANDO GONZALEZ", "ESTEBAN E. HERNANDEZ H.", "YARIBETH M. ESCUDERO H.",
+                    "MARIA ISABEL MADRID CASTILLO", "DORIAN GREAVES", "ANGELICA RODRIGUEZ", "ERICK ROSALES SANCHEZ JIRON",
+                    "LEOPOLDO SERRANO BROWN", "JERRY JORDAN", "PABLO GONZALEZ", "ANGEL JORDAN"
+                ]
+                for nom in posibles_nombres:
+                    if nom in contexto_bloque.upper():
+                        operador = nom
+                        break
 
-            for idx_m in range(len(marcas)):
-                num_rep = idx_m + 1
-                if num_rep > 4:
-                    break
-                inicio = marcas[idx_m]["pos"] + len(f"{marcas[idx_m]['fecha']} {marcas[idx_m]['hora']}")
-                fin = marcas[idx_m + 1]["pos"] if idx_m + 1 < len(marcas) else len(texto_pagina)
-                fragmento = texto_pagina[inicio:fin].replace("Comentario Del Usuario", "").replace("\n", " ").strip()
-                datos_caso[f"Reporte {num_rep}"] = fragmento
+                # Capturar Tipo y Subtipo analizando el texto del bloque
+                if "Alteracion de la Convivencia" in contexto_bloque or "Riña" in contexto_bloque:
+                    tipo = "Alteracion de la Convivencia Pacifica"
+                    subtipo = "Riña y Escándalo" if "Riña" in contexto_bloque else "Alteración del Orden Publico"
+                elif "Tránsito" in contexto_bloque or "Colisión" in contexto_bloque:
+                    tipo = "Tránsito"
+                    subtipo = "Colisión" if "Colisión" in contexto_bloque else "Infracción"
+                elif "Arma de Fuego" in contexto_bloque:
+                    tipo = "Arma de Fuego"
+                    subtipo = "Posesión Ilegal / Detonaciones"
+                elif "Violencia de Genero" in contexto_bloque or "Violencia Doméstica" in contexto_bloque:
+                    tipo = "Violencia de Genero"
+                    subtipo = "Violencia Doméstica"
+                elif "Actitud Sospechosa" in contexto_bloque:
+                    tipo = "Actitud Sospechosa"
+                    subtipo = "N/A"
+                elif "Hurto" in contexto_bloque:
+                    tipo = "Hurto"
+                    subtipo = "A Propiedad / Con Destreza"
+                elif "Pánico" in contexto_bloque:
+                    tipo = "Pánico"
+                    subtipo = "N/A"
+                else:
+                    tipo = "Incidente General S.PORTAL"
+                    subtipo = "N/A"
 
-    except Exception:
-        pass  # Si un caso falla temporalmente, continúa con el siguiente
+                # Guardar el registro estructurado
+                casos_extraidos.append({
+                    "Incidente": incidente_id,
+                    "Tipo": tipo,
+                    "Subtipo": subtipo,
+                    "Zona": zona,
+                    "Fecha Creación": fecha_creacion,
+                    "Hora Creación": hora_creacion,
+                    "Operador": operador
+                })
+            i += 1
+
+        return casos_extraidos
+
+    except Exception as e:
+        return []
+
+# Interfaz de carga en Streamlit
+archivo_pdf = st.file_uploader("Sube el PDF de listado general de S.PORTAL:", type=["pdf"])
+
+if archivo_pdf:
+    with st.spinner("Procesando masivamente el documento..."):
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(archivo_pdf.getbuffer())
+            ruta_temporal = tmp.name
+
+        resultados = procesar_pdf_masivo(ruta_temporal)
+        os.unlink(ruta_temporal)
+
+    if resultados:
+        df_final = pd.DataFrame(resultados)
+        st.success(f"¡Procesamiento masivo exitoso! Se han consolidado {len(df_final)} casos en total.")
         
-    return datos_caso
+        st.subheader("Vista previa de la Matriz Maestra:")
+        st.dataframe(df_final)
 
-def procesar_pdf_listado(ruta_pdf):
-    reader = PdfReader(ruta_pdf)
-    texto_completo = ""
-    for pagina in reader.pages:
-        t = pagina.extract_text()
-        if t:
-            texto_completo += t + "\n"
-    
-    # Extraer todos los códigos únicos del PDF
-    codigos = re.findall(r'(P\d{10,12})', texto_completo)
-    return list(dict.fromkeys(codigos)) # Elimina duplicados manteniendo el orden
-
-# Interfaz de Streamlit
-archivos_subidos = st.file_uploader("Sube el PDF de listado general de S.PORTAL:", type=["pdf"])
-
-if archivos_subidos:
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(archivos_subidos.getbuffer())
-        ruta_temporal = tmp.name
-
-    lista_codigos = procesar_pdf_listado(ruta_temporal)
-    os.unlink(ruta_temporal)
-
-    if lista_codigos:
-        st.info(f"Se han detectado {len(lista_codigos)} códigos. Iniciando extracción automática de detalles en la red interna...")
-        
-        resultados = []
-        barra = st.progress(0)
-        total = len(lista_codigos)
-
-        for i, codigo in enumerate(lista_codigos):
-            info_caso = extraer_detalles_incidente(codigo)
-            resultados.append(info_caso)
-            barra.progress((i + 1) / total)
-
-        df_resultado = pd.DataFrame(resultados)
-        st.success("¡Extracción masiva completada con éxito!")
-        
-        st.subheader("Vista previa del Excel Consolidado con Detalles:")
-        st.dataframe(df_resultado)
-
-        nombre_excel = "Estudio_Operativo_Detallado_Completo.xlsx"
-        df_resultado.to_excel(nombre_excel, index=False)
+        nombre_excel = "Matriz_Operativa_S_PORTAL.xlsx"
+        df_final.to_excel(nombre_excel, index=False)
 
         with open(nombre_excel, "rb") as f:
             st.download_button(
-                label="📥 Descargar Archivo Excel Consolidado Completo",
+                label="📥 Descargar Archivo Excel Consolidado Maestro",
                 data=f,
                 file_name=nombre_excel,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
     else:
-        st.error("No se encontraron códigos de incidente válidos en el PDF.")
+        st.error("No se pudieron extraer datos válidos del PDF. Verifica que sea el reporte de listado general correcto.")
 else:
-    st.warning("Sube el PDF de listado general de S.PORTAL para comenzar el proceso automático.")
+    st.info("Por favor, sube tu archivo PDF de listado general de S.PORTAL para comenzar.")
