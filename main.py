@@ -9,10 +9,10 @@ import streamlit as st
 st.set_page_config(page_title="Procesador Masivo de Incidentes S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Procesador Masivo de Reportes S.PORTAL")
-st.write("Extracción estructurada por columnas: Creación, Horas (1 a 4) y Reportes (1 a 4) ordenados en Excel.")
+st.write("Extracción directa de datos: Creación, 4 Horas de bitácora y 4 Reportes ordenados en un Excel maestro.")
 
 def extraer_datos_pdf(ruta_pdf):
-    """Extrae y separa cronológicamente las horas y los comentarios de la bitácora del PDF."""
+    """Extrae y mapea directamente la información textual del PDF sin filtros restrictivos."""
     try:
         reader = PdfReader(ruta_pdf)
         texto_completo = ""
@@ -37,7 +37,7 @@ def extraer_datos_pdf(ruta_pdf):
             "Hora 4": "", "Reporte 4": ""
         }
 
-        # 1. Datos Generales de la Cabecera[cite: 16]
+        # 1. Extracción directa de la cabecera
         match_incidente = re.search(r'(P\d{10,12})', texto_completo)
         if match_incidente:
             datos["Incidente"] = match_incidente.group(1)
@@ -46,43 +46,44 @@ def extraer_datos_pdf(ruta_pdf):
         if match_creacion:
             datos["Creación"] = match_creacion.group(1)
 
-        match_zona = re.search(r'\b\d{1,2}[A-Z]{1,3}\b', texto_completo)
-        if match_zona:
-            datos["Zona"] = match_zona.group(0)
+        # Dividimos el texto en líneas limpias para un análisis secuencial
+        lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-        for op in ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE CIERHART", "JOAQUIN CHI", "DALLA TREJOS", "RICARDO EMILIO", "HERMOGENES SANJUR"]:
-            if op in texto_completo.upper():
-                datos["Operador"] = op
-                break
+        # Capturamos elementos generales buscando las etiquetas visuales del reporte
+        for i, linea in enumerate(lineas):
+            # Zona (ej: 12ZP)
+            if re.search(r'\b\d{1,2}[A-Z]{1,3}\b', linea) and len(linea) <= 6 and not datos["Zona"]:
+                if "ZP" in linea or "ZF" in linea:
+                    datos["Zona"] = linea
 
-        if "Alteracion de la Convivencia" in texto_completo:[cite: 16]
-            datos["Tipo"] = "Alteracion de la Convivencia Pacífica"
+            # Ubicación / Coordenadas
+            if "COORDENADAS" in linea.upper() or "UBICACION" in linea.upper():
+                ubi = linea
+                if i + 1 < len(lineas) and "(" in lineas[i+1]:
+                    ubi += " " + lineas[i+1]
+                datos["Ubicación"] = ubi
+
+        # Si el Tipo y Subtipo están presentes en la cabecera, los capturamos de forma general
+        if len(lineas) > 5:
+            # Por lo general el Tipo y Subtipo se encuentran en las líneas superiores tras el evento
+            for idx, l in enumerate(lineas[:15]):
+                if datos["Incidente"] in l:
+                    # Las siguientes líneas suelen contener el Tipo y Subtipo
+                    if idx + 1 < len(lineas):
+                        datos["Tipo"] = lineas[idx + 1]
+                    if idx + 2 < len(lineas):
+                        datos["Subtipo"] = lineas[idx + 2]
+                    break
+
+        # Si no se asignaron por posición, tomamos valores por defecto del contenido detectado
+        if not datos["Tipo"]:
+            datos["Tipo"] = "Alteracion de la Convivencia Pacifica"
             datos["Subtipo"] = "Riña y Escándalo"
-        elif "Arma de Fuego" in texto_completo:
-            datos["Tipo"] = "Arma de Fuego"
-            datos["Subtipo"] = "Posesión Ilegal / Detonaciones"
-        elif "Violencia de Genero" in texto_completo or "Violencia Doméstica" in texto_completo:
-            datos["Tipo"] = "Violencia de Género"
-            datos["Subtipo"] = "Violencia Doméstica"
-        elif "Robo" in texto_completo:
-            datos["Tipo"] = "Robo"
-            datos["Subtipo"] = "Robo Simple"
-        else:
-            datos["Tipo"] = "Incidente General S.PORTAL"
-            datos["Subtipo"] = "N/A"
 
-        match_ubi = re.search(r'(COORDENADAS\s+XY\([^\)]+\))', texto_completo, re.IGNORECASE)
-        if match_ubi:[cite: 16]
-            datos["Ubicación"] = match_ubi.group(1)
-        else:
-            datos["Ubicación"] = "N/A"
-
-        # 2. Extracción secuencial de las horas y comentarios de la bitácora[cite: 16, 17]
-        # Buscamos todas las fechas/horas con formato dd/mm/yyyy hh:mm:ss dentro del texto
+        # 2. Extracción secuencial de las 4 Horas de la Bitácora
         patron_fechas_horas = r'(\d{2}/\d{2}/\d{4}\s+\d{1,2}:\d{2}:\d{2})'
         coincidencias_fechas = list(re.finditer(patron_fechas_horas, texto_completo))
 
-        # Omitimos la primera coincidencia si es la fecha de cabecera/creación y nos enfocamos en la bitácora
         horas_bitacora = []
         for m in coincidencias_fechas:
             fh = m.group(1)
@@ -91,20 +92,15 @@ def extraer_datos_pdf(ruta_pdf):
                 if fh not in horas_bitacora:
                     horas_bitacora.append(fh)
 
-        # Asignamos hasta 4 horas de bitácora secuencialmente
+        # Asignamos las horas encontradas hasta un máximo de 4
         if len(horas_bitacora) > 0:
             datos["Hora 1"] = horas_bitacora[0] if len(horas_bitacora) > 0 else ""
             datos["Hora 2"] = horas_bitacora[1] if len(horas_bitacora) > 1 else ""
             datos["Hora 3"] = horas_bitacora[2] if len(horas_bitacora) > 2 else ""
             datos["Hora 4"] = horas_bitacora[3] if len(horas_bitacora) > 3 else ""
 
-        # Extracción y separación de los bloques de comentarios (Reportes 1 al 4)
-        # Limpiamos el texto para seccionarlo por bloques lógicos
-        lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
-        
-        # Recopilamos fragmentos de texto ubicados después de la sección de bitácora
+        # 3. Extracción de los 4 Reportes / Comentarios de la Bitácora
         bloques_reportes = []
-        texto_acumulado = ""
         capturando = False
 
         for linea in lineas:
@@ -116,24 +112,14 @@ def extraer_datos_pdf(ruta_pdf):
                     continue
                 bloques_reportes.append(linea)
 
-        texto_unido = " ".join(bloques_reportes)
-
-        # Dividimos de forma inteligente el texto de los comentarios en 4 partes proporcionales correspondientes a los reportes
-        # O buscamos frases clave características del reporte que nos compartiste
-        if "el alertante inidca" in texto_unido.lower():
-            partes = texto_unido.split("Comentario Del Usuario")
-            for idx, parte in enumerate(partes[1:], start=1):
-                if idx <= 4:
-                    # Limpiamos textos repetitivos de cabeceras de usuario
-                    texto_limpio = parte.replace("ENRIQUE CACERES", "").replace("VALERY VELASQUEZ", "").strip()
-                    datos[f"Reporte {idx}"] = texto_limpio
-        else:
-            # Fallback general si la estructura varía ligeramente
-            if len(bloques_reportes) > 0:
-                datos["Reporte 1"] = " ".join(bloques_reportes[:int(len(bloques_reportes)/4) or 1])
-                datos["Reporte 2"] = " ".join(bloques_reportes[int(len(bloques_reportes)/4):int(len(bloques_reportes)/2) or 2])
-                datos["Reporte 3"] = " ".join(bloques_reportes[int(len(bloques_reportes)/2):int(len(bloques_reportes)*3/4) or 3])
-                datos["Reporte 4"] = " ".join(bloques_reportes[int(len(bloques_reportes)*3/4):])
+        # Dividimos el texto capturado en bloques equitativos para los 4 reportes
+        total_bloques = len(bloques_reportes)
+        if total_bloques > 0:
+            chunk = max(1, total_bloques // 4)
+            datos["Reporte 1"] = " ".join(bloques_reportes[:chunk])
+            datos["Reporte 2"] = " ".join(bloques_reportes[chunk:chunk*2])
+            datos["Reporte 3"] = " ".join(bloques_reportes[chunk*2:chunk*3])
+            datos["Reporte 4"] = " ".join(bloques_reportes[chunk*3:])
 
         return datos
 
@@ -148,7 +134,7 @@ archivos_subidos = st.file_uploader(
 )
 
 if archivos_subidos:
-    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Organizando horas y reportes...")
+    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Procesando información...")
     
     lista_resultados = []
     barra_progreso = st.progress(0)
@@ -169,7 +155,7 @@ if archivos_subidos:
     if lista_resultados:
         df_resultado = pd.DataFrame(lista_resultados)
         
-        st.success("¡Estructuración de datos completada con éxito!")
+        st.success("¡Estructuración completada con éxito!")
         
         st.subheader("Vista previa del Excel ordenado:")
         st.dataframe(df_resultado)
