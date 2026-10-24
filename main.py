@@ -2,14 +2,15 @@ import os
 import re
 import tempfile
 import zipfile
+from multiprocessing import Pool, cpu_count
 import pandas as pd
 from pypdf import PdfReader
 import streamlit as st
 
 st.set_page_config(page_title="Centro de Procesamiento S.PORTAL", page_icon="📊", layout="wide")
 
-st.title("📊 Sistema Integral de Procesamiento S.PORTAL")
-st.write("Herramienta avanzada: Procesamiento de listados consolidados en PDF y captura masiva de alto rendimiento.")
+st.title("📊 Sistema Integral de Procesamiento S.PORTAL (Alto Rendimiento)")
+st.write("Herramienta avanzada: Procesamiento masivo ultra rápido en paralelo para +30k expedientes.")
 
 modo = st.sidebar.selectbox(
     "Selecciona el Modulo de Trabajo:",
@@ -23,12 +24,12 @@ st.markdown("---")
 
 if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
     st.header("📄 Extractor de Listados Consolidados Masivos")
-    st.write("Sube tu archivo PDF consolidado mensual (ej. ENERO.pdf) para extraer automáticamente todos los incidentes en formato tabular.")
+    st.write("Sube tu archivo PDF consolidado mensual para extraer automáticamente todos los incidentes.")
 
     archivo_consolidado = st.file_uploader("Sube el PDF consolidado general:", type=["pdf"], key="pdf_con")
 
     if archivo_consolidado:
-        st.info(f"Archivo cargado: {archivo_consolidado.name}. Listo para procesar las páginas.")
+        st.info(f"Archivo cargado: {archivo_consolidado.name}. Listo para procesar.")
 
         if st.button("🚀 Extraer Datos del Listado Consolidado"):
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
@@ -90,9 +91,9 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                     with open(nombre_out, "rb") as f:
                         st.download_button("📥 Descargar Excel de Listado Consolidado", data=f, file_name=nombre_out, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 else:
-                    st.warning("No se detectaron códigos de incidente con el formato esperado en este PDF.")
+                    st.warning("No se detectaron códigos de incidente con el formato esperado.")
             except Exception as e:
-                st.error(f"Ocurrió un error al procesar el archivo: {e}")
+                st.error(f"Error al procesar: {e}")
 
 else:
     st.subheader("📋 Vista Previa de la Tabla Maestra (Vacía)")
@@ -105,8 +106,9 @@ else:
     st.dataframe(pd.DataFrame(columns=columnas_base), use_container_width=True)
     st.markdown("---")
 
-    def extraer_datos_pdf_robusto(ruta_pdf, nombre_archivo_original=""):
-        """Extracción robusta: extrae texto, coordenadas, operador y asegura el código desde el nombre o contenido."""
+    def worker_extraer_pdf(args):
+        """Función optimizada para procesar un PDF de forma independiente en paralelo."""
+        ruta_pdf, nombre_original = args
         try:
             reader = PdfReader(ruta_pdf)
             texto_completo = ""
@@ -115,7 +117,7 @@ else:
                 if t: texto_completo += t + "\n"
 
             datos = {
-                "Archivo": nombre_archivo_original or os.path.basename(ruta_pdf),
+                "Archivo": nombre_original or os.path.basename(ruta_pdf),
                 "Incidente": "", "Tipo": "", "Subtipo": "", "Ubicación": "N/A", "Zona": "N/A", "Operador": "N/A",
                 "Fecha Creación": "", "Hora Creación": "",
                 "Fecha 1": "", "Hora 1": "", "Reporte 1": "",
@@ -124,13 +126,10 @@ else:
                 "Fecha 4": "", "Hora 4": "", "Reporte 4": ""
             }
 
-            # 1. Buscar código en el contenido del PDF
             match_inc = re.search(r'(P\d{10,12})', texto_completo)
             if match_inc:
                 datos["Incidente"] = match_inc.group(1)
-            
-            # 2. Si no está en el texto, buscarlo directamente en el nombre del archivo (ej. Incidente_P20260000001.pdf)
-            if not datos["Incidente"]:
+            else:
                 match_arch = re.search(r'(P\d{10,12})', datos["Archivo"])
                 if match_arch:
                     datos["Incidente"] = match_arch.group(1)
@@ -171,19 +170,22 @@ else:
                 datos[f"Fecha {idx_m}"] = marca["fecha"]
                 datos[f"Hora {idx_m}"] = marca["hora"]
 
+            if not datos["Incidente"]:
+                datos["Incidente"] = "S/N"
+
             return datos
         except Exception:
             return None
 
     archivo_zip = st.file_uploader(
-        "Sube tu paquete comprimido (.zip) con los más de 30k PDFs (Soporta archivos grandes de varios GBs):", 
+        "Sube tu paquete comprimido (.zip) con los más de 30k PDFs:", 
         type=["zip"]
     )
 
     if archivo_zip:
         st.info(f"Paquete detectado: {archivo_zip.name} ({round(archivo_zip.size / (1024*1024), 2)} MB).")
         
-        if st.button("🚀 Iniciar Procesamiento Masivo de Alto Volumen"):
+        if st.button("🚀 Iniciar Procesamiento Masivo Ultra Rápido"):
             with tempfile.TemporaryDirectory() as temp_dir:
                 ruta_zip = os.path.join(temp_dir, "paquete.zip")
                 
@@ -191,8 +193,7 @@ else:
                     for chunk in archivo_zip:
                         f.write(chunk)
 
-                st.info("Descomprimiendo archivos en el servidor...")
-                
+                st.info("Descomprimiendo archivos...")
                 try:
                     with zipfile.ZipFile(ruta_zip, 'r') as zip_ref:
                         zip_ref.extractall(temp_dir)
@@ -203,37 +204,27 @@ else:
                 for root, dirs, files in os.walk(temp_dir):
                     for file in files:
                         if file.lower().endswith('.pdf'):
-                            archivos_pdf.append(os.path.join(root, file))
+                            archivos_pdf.append((os.path.join(root, file), file))
 
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF!")
-                    barra = st.progress(0)
-                    estado_texto = st.empty()
-                    lista_resultados = []
-                    nombre_excel = "Reporte_Masivo_Master_30k.xlsx"
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Iniciando procesamiento en paralelo...")
                     
-                    for i, ruta_pdf in enumerate(archivos_pdf):
-                        nombre_original = os.path.basename(ruta_pdf)
-                        info_caso = extraer_datos_pdf_robusto(ruta_pdf, nombre_original)
-                        
-                        # Si se extrajo el archivo correctamente (aunque no tenga tipo/subtipo exacto, pero tiene nombre o incidente), lo guardamos
-                        if info_caso:
-                            if not info_caso["Incidente"]:
-                                info_caso["Incidente"] = "S/N"
-                            lista_resultados.append(info_caso)
+                    # Usar todos los núcleos disponibles del procesador para velocidad extrema
+                    nucleos = max(1, cpu_count() - 1)
+                    
+                    with Pool(processes=nucleos) as pool:
+                        resultados = pool.map(worker_extraer_pdf, archivos_pdf)
 
-                        if i % 100 == 0 or i == total_archivos - 1:
-                            progreso = (i + 1) / total_archivos
-                            barra.progress(progreso)
-                            estado_texto.text(f"Procesando archivo {i + 1:,} de {total_archivos:,} ({int(progreso * 100)}%)...")
+                    lista_resultados = [r for r in resultados if r is not None]
 
                     if lista_resultados:
                         df_resultado = pd.DataFrame(lista_resultados)
-                        st.success(f"¡Procesamiento masivo completado con éxito! Total de registros procesados: {len(df_resultado):,}")
+                        st.success(f"¡Procesamiento masivo finalizado a máxima velocidad! Registros listos: {len(df_resultado):,}")
                         st.dataframe(df_resultado.head(50), use_container_width=True)
 
+                        nombre_excel = "Reporte_Masivo_Master_30k.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
@@ -243,8 +234,8 @@ else:
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
                     else:
-                        st.error("No se pudo procesar la información de los PDFs.")
+                        st.error("No se pudieron extraer datos válidos de los archivos.")
                 else:
-                    st.warning("No se encontró ningún archivo PDF dentro del archivo ZIP.")
+                    st.warning("No se encontraron PDFs en el archivo ZIP.")
     else:
         st.info("Sube tu archivo .ZIP con los reportes para comenzar.")
