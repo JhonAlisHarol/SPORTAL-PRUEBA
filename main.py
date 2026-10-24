@@ -27,7 +27,7 @@ df_vacio = pd.DataFrame(columns=columnas_base)
 st.dataframe(df_vacio, use_container_width=True)
 st.markdown("---")
 
-def extraer_datos_pdf(ruta_pdf):
+def extraer_datos_pdf(ruta_pdf, nombre_archivo_original=""):
     """Extrae cabecera, separa fechas/horas y asocia cada comentario de la bitácora a su respectivo reporte."""
     try:
         reader = PdfReader(ruta_pdf)
@@ -39,13 +39,13 @@ def extraer_datos_pdf(ruta_pdf):
 
         # Diccionario base con la estructura exacta
         datos = {
-            "Archivo": os.path.basename(ruta_pdf),
+            "Archivo": nombre_archivo_original if nombre_archivo_original else os.path.basename(ruta_pdf),
             "Incidente": "",
-            "Tipo": "",
-            "Subtipo": "",
-            "Ubicación": "",
-            "Zona": "",
-            "Operador": "",
+            "Tipo": "Alteracion de la Convivencia Pacifica",
+            "Subtipo": "Riña y Escándalo",
+            "Ubicación": "N/A",
+            "Zona": "N/A",
+            "Operador": "N/A",
             "Fecha Creación": "",
             "Hora Creación": "",
             "Fecha 1": "", "Hora 1": "", "Reporte 1": "",
@@ -54,54 +54,31 @@ def extraer_datos_pdf(ruta_pdf):
             "Fecha 4": "", "Hora 4": "", "Reporte 4": ""
         }
 
-        # 1. Cabecera general
+        # 1. Buscar código de incidente (tanto en el texto como en el nombre del archivo si viene de la carpeta)
         match_incidente = re.search(r'(P\d{10,12})', texto_completo)
         if match_incidente:
             datos["Incidente"] = match_incidente.group(1)
+        elif re.search(r'(P\d{10,12})', datos["Archivo"]):
+            datos["Incidente"] = re.search(r'(P\d{10,12})', datos["Archivo"]).group(1)
 
-        match_creacion = re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})', texto_completo)
-        if match_creacion:
-            datos["Fecha Creación"] = match_creacion.group(1)
-            datos["Hora Creación"] = match_creacion.group(2)
-
-        lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
-
-        for i, linea in enumerate(lineas):
-            if re.search(r'\b\d{1,2}[A-Z]{1,3}\b', linea) and len(linea) <= 6 and not datos["Zona"]:
-                if "ZP" in linea or "ZF" in linea:
-                    datos["Zona"] = linea
-
-            if "COORDENADAS" in linea.upper() or "UBICACION" in linea.upper():
-                ubi = linea
-                if i + 1 < len(lineas) and "(" in lineas[i+1]:
-                    ubi += " " + lineas[i+1]
-                datos["Ubicación"] = ubi
-
-        if len(lineas) > 5:
-            for idx, l in enumerate(lineas[:15]):
-                if datos["Incidente"] in l:
-                    if idx + 1 < len(lineas):
-                        datos["Tipo"] = lineas[idx + 1]
-                    if idx + 2 < len(lineas):
-                        datos["Subtipo"] = lineas[idx + 2]
-                    break
-
-        if not datos["Tipo"]:
-            datos["Tipo"] = "Alteracion de la Convivencia Pacifica"
-            datos["Subtipo"] = "Riña y Escándalo"
-
-        # 2. Extracción de todas las ocurrencias de Fecha y Hora en el texto
+        # 2. Buscar fechas y horas en el contenido
         patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
         matches = list(re.finditer(patron_fh, texto_completo))
+
+        if matches:
+            datos["Fecha Creación"] = matches[0].group(1)
+            datos["Hora Creación"] = matches[0].group(2)
 
         marcas_tiempo = []
         for m in matches:
             f_val = m.group(1)
             h_val = m.group(2)
             pos = m.start()
+            # Evitar duplicar la de creación exacta si es la primera
             if not (f_val == datos["Fecha Creación"] and h_val == datos["Hora Creación"] and len(marcas_tiempo) == 0):
                 marcas_tiempo.append({"fecha": f_val, "hora": h_val, "pos": pos})
 
+        # Asignar hasta 4 marcas de tiempo secuenciales
         for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
             datos[f"Fecha {idx_m}"] = marca["fecha"]
             datos[f"Hora {idx_m}"] = marca["hora"]
@@ -124,47 +101,40 @@ def extraer_datos_pdf(ruta_pdf):
             
             datos[f"Reporte {num_rep}"] = fragmento_limpio
 
+        # Si no encontró marcas pero hay texto, metemos al menos el contenido general
+        if not marcas_tiempo and texto_completo:
+            datos["Reporte 1"] = texto_completo[:500].replace("\n", " ").strip()
+
         return datos
 
     except Exception as e:
         return None
 
-# Selección del método de entrada: Archivos directos o Ruta de Carpeta Local
-metodo_carga = st.radio("Selecciona el método para ingresar tus PDFs:", ["Subir Archivos Directamente", "Procesar desde una Carpeta Local"])
+# Componente único de carga masiva intuitiva (permite seleccionar múltiples archivos de cualquier carpeta/Escritorio de golpe)
+archivos_subidos = st.file_uploader(
+    "Selecciona o arrastra tus archivos PDF de S.PORTAL (puedes elegir cientos de archivos desde tu Escritorio o cualquier carpeta a la vez):", 
+    type=["pdf"], 
+    accept_multiple_files=True
+)
 
-rutas_pdfs = []
-
-if metodo_carga == "Subir Archivos Directamente":
-    archivos_subidos = st.file_uploader(
-        "Sube tus archivos PDF de incidentes aquí (Puedes seleccionar varios a la vez):", 
-        type=["pdf"], 
-        accept_multiple_files=True
-    )
-    if archivos_subidos:
-        for archivo in archivos_subidos:
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-            tmp.write(archivo.getbuffer())
-            rutas_pdfs.append(tmp.name)
-
-else:
-    ruta_carpeta = st.text_input("Ingresa la ruta completa de la carpeta en tu equipo (ej. C:\\Users\\hcedeño\\Desktop\\Reportes_S_Portal_PDF):")
-    if ruta_carpeta and os.path.exists(ruta_carpeta):
-        archivos_en_carpeta = [os.path.join(ruta_carpeta, f) for f in os.listdir(ruta_carpeta) if f.lower().endswith('.pdf')]
-        st.success(f"Se encontraron {len(archivos_en_carpeta)} archivos PDF en la carpeta especificada.")
-        rutas_pdfs = archivos_en_carpeta
-    elif ruta_carpeta:
-        st.error("La ruta ingresada no existe o no es válida.")
-
-if rutas_pdfs:
+if archivos_subidos:
+    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Procesando estructuración y asociando reportes...")
+    
     if st.button("🚀 Procesar y Consolidar Datos"):
         lista_resultados = []
         barra_progreso = st.progress(0)
-        total_archivos = len(rutas_pdfs)
+        total_archivos = len(archivos_subidos)
 
-        for i, ruta_pdf in enumerate(rutas_pdfs):
-            info_caso = extraer_datos_pdf(ruta_pdf)
+        for i, archivo in enumerate(archivos_subidos):
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                tmp.write(archivo.getbuffer())
+                ruta_temporal = tmp.name
+
+            info_caso = extraer_datos_pdf(ruta_temporal, archivo.name)
             if info_caso:
                 lista_resultados.append(info_caso)
+
+            os.unlink(ruta_temporal)
             barra_progreso.progress((i + 1) / total_archivos)
 
         if lista_resultados:
@@ -188,4 +158,4 @@ if rutas_pdfs:
         else:
             st.error("No se pudieron extraer datos de los archivos seleccionados.")
 else:
-    st.info("Por favor, selecciona los archivos o ingresa la ruta de la carpeta para comenzar.")
+    st.info("Por favor, selecciona o arrastra tus archivos PDF arriba para comenzar.")
