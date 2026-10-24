@@ -27,7 +27,7 @@ st.dataframe(df_vacio, use_container_width=True)
 st.markdown("---")
 
 def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
-    """Extracción optimizada y veloz con análisis inteligente de ubicación en la narrativa."""
+    """Extracción optimizada y veloz con análisis inteligente de ubicación geográfica exacta."""
     try:
         reader = PdfReader(ruta_pdf)
         texto_completo = ""
@@ -118,22 +118,25 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
         if not marcas_tiempo and texto_completo:
             datos["Reporte 1"] = texto_completo[:500].replace("\n", " ").strip()
 
-        # 🧠 ANALIZADOR INTELIGENTE DE UBICACIÓN DESDE LA NARRATIVA
-        texto_analisis = datos["Reporte 1"] if datos["Reporte 1"] else texto_completo
+        # 🧠 ANALIZADOR GEOGRÁFICO DE UBICACIÓN MAESTRA
+        texto_analisis = (datos["Reporte 1"] + " " + texto_completo)
         
-        # Patrón para extraer exactamente el tramo de dirección (ej: "veracruz, el palmar, calle principal, frente al mister precio")
-        match_ubicacion_narrativa = re.search(r'(?:en|que en|ubicado en|sector)\s+([^,]+(?:,\s*[^,]+){1,5}?)(?=\s+(?:se\s+está|se\s+esta|se\s+procedió|se\s+procedio|hay|reportan|ocurrió|ocurrio|con\s+la\s+finalidad))', texto_analisis, re.IGNORECASE)
+        # Patrón optimizado para capturar desde el sector/lugar hasta antes de que inicie la acción del evento
+        patron_ubi = re.search(r'(?:en|que en|ubicado en|lugar:?|punto sensitivo:?)\s+([^,]+(?:,\s*[^,]+){1,6}?)(?=\s+(?:se\s+está|se\s+esta|se\s+procedió|se\s+procedio|hay|reportan|ocurrió|ocurrio|con\s+la\s+finalidad|se\s+observo|se\s+observó|se\s+mantiene))', texto_analisis, re.IGNORECASE)
         
-        if match_ubicacion_narrativa:
-            ubicacion_extraida = match_ubicacion_narrativa.group(1).strip()
-            ubicacion_extraida = re.sub(r'[\.,;]+$', '', ubicacion_extraida) # Limpiar puntos o comas finales
-            datos["Ubicación"] = ubicacion_extraida
+        if patron_ubi:
+            ubi_limpia = patron_ubi.group(1).strip()
+            # Limpiar prefijos de etiquetas sueltas si las arrastró
+            ubi_limpia = re.sub(r'^(?:punto sensitivo:?|lugar:?)\s*', '', ubi_limpia, flags=re.IGNORECASE).strip()
+            ubi_limpia = re.sub(r'[\.,;]+$', '', ubi_limpia)
+            if len(ubi_limpia) > 3:
+                datos["Ubicación"] = ubi_limpia
         else:
-            # Respaldo buscando palabras clave geográficas directamente en el texto
+            # Respaldo secundario si la estructura varía ligeramente
             for l in lineas:
                 l_up = l.upper()
-                if ("VERACRUZ" in l_up or "PALMAR" in l_up) and len(l) < 60 and "INIDCA" not in l_up and "SE PROCEDIO" not in l_up:
-                    datos["Ubicación"] = l
+                if ("VERACRUZ" in l_up or "PALMAR" in l_up or "COLON" in l_up) and len(l) < 50 and "INIDCA" not in l_up and "SE PROCEDIO" not in l_up:
+                    datos["Ubicación"] = l.replace("LUGAR:", "").strip()
                     break
 
         # Respaldo para Operador si aparece en el texto general
