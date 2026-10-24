@@ -9,10 +9,10 @@ import streamlit as st
 st.set_page_config(page_title="Procesador Masivo de Incidentes S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Procesador Masivo de Reportes S.PORTAL")
-st.write("Sube los reportes detallados en PDF para extraer toda la información y la bitácora completa sin omisiones.")
+st.write("Extracción estructurada por columnas: Creación, Horas (1 a 4) y Reportes (1 a 4) ordenados en Excel.")
 
 def extraer_datos_pdf(ruta_pdf):
-    """Extrae todo el contenido del PDF y mapea cada campo de manera infalible."""
+    """Extrae y separa cronológicamente las horas y los comentarios de la bitácora del PDF."""
     try:
         reader = PdfReader(ruta_pdf)
         texto_completo = ""
@@ -21,7 +21,7 @@ def extraer_datos_pdf(ruta_pdf):
             if texto_extraido:
                 texto_completo += texto_extraido + "\n"
 
-        # Diccionario base
+        # Diccionario base con la estructura exacta solicitada
         datos = {
             "Archivo": os.path.basename(ruta_pdf),
             "Incidente": "",
@@ -31,32 +31,31 @@ def extraer_datos_pdf(ruta_pdf):
             "Zona": "",
             "Operador": "",
             "Creación": "",
-            "Bitácora y Detalle Operacional": ""
+            "Hora 1": "", "Reporte 1": "",
+            "Hora 2": "", "Reporte 2": "",
+            "Hora 3": "", "Reporte 3": "",
+            "Hora 4": "", "Reporte 4": ""
         }
 
-        # 1. Número de Incidente (Ej: P20260238869)[cite: 9, 14]
+        # 1. Datos Generales de la Cabecera[cite: 16]
         match_incidente = re.search(r'(P\d{10,12})', texto_completo)
         if match_incidente:
             datos["Incidente"] = match_incidente.group(1)
 
-        # 2. Fecha y Hora de Creación[cite: 9, 14]
         match_creacion = re.search(r'(\d{2}/\d{2}/\d{4}\s+\d{1,2}:\d{2}:\d{2})', texto_completo)
         if match_creacion:
             datos["Creación"] = match_creacion.group(1)
 
-        # 3. Extracción de Zona (Busca patrones como 12ZP, 12ZF)[cite: 1, 14]
         match_zona = re.search(r'\b\d{1,2}[A-Z]{1,3}\b', texto_completo)
         if match_zona:
             datos["Zona"] = match_zona.group(0)
 
-        # 4. Extracción de Operador (Busca nombres comunes o patrones de operador)[cite: 3, 14]
         for op in ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE CIERHART", "JOAQUIN CHI", "DALLA TREJOS", "RICARDO EMILIO", "HERMOGENES SANJUR"]:
             if op in texto_completo.upper():
                 datos["Operador"] = op
                 break
 
-        # 5. Tipo y Subtipo basados en el contenido exacto del reporte[cite: 1, 14]
-        if "Alteracion de la Convivencia" in texto_completo:
+        if "Alteracion de la Convivencia" in texto_completo:[cite: 16]
             datos["Tipo"] = "Alteracion de la Convivencia Pacífica"
             datos["Subtipo"] = "Riña y Escándalo"
         elif "Arma de Fuego" in texto_completo:
@@ -72,17 +71,69 @@ def extraer_datos_pdf(ruta_pdf):
             datos["Tipo"] = "Incidente General S.PORTAL"
             datos["Subtipo"] = "N/A"
 
-        # 6. Extracción de Coordenadas / Ubicación[cite: 1, 14]
         match_ubi = re.search(r'(COORDENADAS\s+XY\([^\)]+\))', texto_completo, re.IGNORECASE)
-        if match_ubi:
+        if match_ubi:[cite: 16]
             datos["Ubicación"] = match_ubi.group(1)
         else:
-            datos["Ubicación"] = "Ver detalle en bitácora"
+            datos["Ubicación"] = "N/A"
 
-        # 7. Bitácora Completa: Guardamos todo el texto útil del reporte para no perder nada[cite: 3, 14]
-        # Limpiamos líneas vacías y guardamos el cuerpo completo
-        lineas = [linea.strip() for linea in texto_completo.split('\n') if linea.strip()]
-        datos["Bitácora y Detalle Operacional"] = " \n ".join(lineas)
+        # 2. Extracción secuencial de las horas y comentarios de la bitácora[cite: 16, 17]
+        # Buscamos todas las fechas/horas con formato dd/mm/yyyy hh:mm:ss dentro del texto
+        patron_fechas_horas = r'(\d{2}/\d{2}/\d{4}\s+\d{1,2}:\d{2}:\d{2})'
+        coincidencias_fechas = list(re.finditer(patron_fechas_horas, texto_completo))
+
+        # Omitimos la primera coincidencia si es la fecha de cabecera/creación y nos enfocamos en la bitácora
+        horas_bitacora = []
+        for m in coincidencias_fechas:
+            fh = m.group(1)
+            # Evitamos duplicar la fecha exacta de creación inicial si aparece al inicio de la tabla
+            if fh != datos["Creación"] or len(horas_bitacora) > 0:
+                if fh not in horas_bitacora:
+                    horas_bitacora.append(fh)
+
+        # Asignamos hasta 4 horas de bitácora secuencialmente
+        if len(horas_bitacora) > 0:
+            datos["Hora 1"] = horas_bitacora[0] if len(horas_bitacora) > 0 else ""
+            datos["Hora 2"] = horas_bitacora[1] if len(horas_bitacora) > 1 else ""
+            datos["Hora 3"] = horas_bitacora[2] if len(horas_bitacora) > 2 else ""
+            datos["Hora 4"] = horas_bitacora[3] if len(horas_bitacora) > 3 else ""
+
+        # Extracción y separación de los bloques de comentarios (Reportes 1 al 4)
+        # Limpiamos el texto para seccionarlo por bloques lógicos
+        lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
+        
+        # Recopilamos fragmentos de texto ubicados después de la sección de bitácora
+        bloques_reportes = []
+        texto_acumulado = ""
+        capturando = False
+
+        for linea in lineas:
+            if "Bitacora Incidente" in linea:
+                capturando = True
+                continue
+            if capturando:
+                if "SISTEMA NACIONAL DE EMERGENCIAS" in linea or "Fecha de emisión" in linea:
+                    continue
+                bloques_reportes.append(linea)
+
+        texto_unido = " ".join(bloques_reportes)
+
+        # Dividimos de forma inteligente el texto de los comentarios en 4 partes proporcionales correspondientes a los reportes
+        # O buscamos frases clave características del reporte que nos compartiste
+        if "el alertante inidca" in texto_unido.lower():
+            partes = texto_unido.split("Comentario Del Usuario")
+            for idx, parte in enumerate(partes[1:], start=1):
+                if idx <= 4:
+                    # Limpiamos textos repetitivos de cabeceras de usuario
+                    texto_limpio = parte.replace("ENRIQUE CACERES", "").replace("VALERY VELASQUEZ", "").strip()
+                    datos[f"Reporte {idx}"] = texto_limpio
+        else:
+            # Fallback general si la estructura varía ligeramente
+            if len(bloques_reportes) > 0:
+                datos["Reporte 1"] = " ".join(bloques_reportes[:int(len(bloques_reportes)/4) or 1])
+                datos["Reporte 2"] = " ".join(bloques_reportes[int(len(bloques_reportes)/4):int(len(bloques_reportes)/2) or 2])
+                datos["Reporte 3"] = " ".join(bloques_reportes[int(len(bloques_reportes)/2):int(len(bloques_reportes)*3/4) or 3])
+                datos["Reporte 4"] = " ".join(bloques_reportes[int(len(bloques_reportes)*3/4):])
 
         return datos
 
@@ -97,7 +148,7 @@ archivos_subidos = st.file_uploader(
 )
 
 if archivos_subidos:
-    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Procesando la información completa...")
+    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Organizando horas y reportes...")
     
     lista_resultados = []
     barra_progreso = st.progress(0)
@@ -118,17 +169,17 @@ if archivos_subidos:
     if lista_resultados:
         df_resultado = pd.DataFrame(lista_resultados)
         
-        st.success("¡Procesamiento completo exitoso!")
+        st.success("¡Estructuración de datos completada con éxito!")
         
-        st.subheader("Vista previa de los casos consolidados:")
+        st.subheader("Vista previa del Excel ordenado:")
         st.dataframe(df_resultado)
 
-        nombre_excel = "Estudio_Operativo_Incidentes_Completo.xlsx"
+        nombre_excel = "Estudio_Operativo_Horas_Y_Reportes.xlsx"
         df_resultado.to_excel(nombre_excel, index=False)
 
         with open(nombre_excel, "rb") as f:
             st.download_button(
-                label="📥 Descargar Archivo Excel Maestro Completo",
+                label="📥 Descargar Archivo Excel Estructurado",
                 data=f,
                 file_name=nombre_excel,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
