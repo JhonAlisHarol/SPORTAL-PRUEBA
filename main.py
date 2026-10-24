@@ -34,12 +34,12 @@ def extraer_datos_pdf(ruta_pdf):
             "Bitácora y Acciones Policiales": ""
         }
 
-        # 1. Número de Incidente (Ej: P20260238869)
+        # 1. Número de Incidente (Ej: P20260238869)[cite: 9]
         match_incidente = re.search(r'(P\d{10,12})', texto_completo)
         if match_incidente:
             datos["Incidente"] = match_incidente.group(1)
 
-        # 2. Fecha de Creación del Incidente
+        # 2. Fecha de Creación del Incidente[cite: 9]
         match_creacion = re.search(r'(\d{2}/\d{2}/\d{4}\s+\d{1,2}:\d{2}:\d{2})', texto_completo)
         if match_creacion:
             datos["Creación"] = match_creacion.group(1)
@@ -55,37 +55,35 @@ def extraer_datos_pdf(ruta_pdf):
             linea = lineas[i]
             
             # Detectar Operador y Zona en las líneas generales
-            if "ENRIQUE" in linea.upper() or "CACERES" in linea.upper() or "VALERY" in linea.upper():
+            if "ENRIQUE" in linea.upper() or "CACERES" in linea.upper() or "VALERY" in linea.upper():[cite: 3]
                 if not datos["Operador"]:
                     datos["Operador"] = linea
 
-            # Detectar Zonas (ej. 12ZF)
+            # Detectar Zonas (ej. 12ZF)[cite: 1]
             if re.search(r'\d+[A-Z]+', linea) and len(linea) < 10 and not datos["Zona"]:
-                if "ZF" in linea or "ZP" in linea:
+                if "ZF" in linea or "ZP" in linea:[cite: 1]
                     datos["Zona"] = linea
 
-            # Capturar Coordenadas o Ubicación
+            # Capturar Coordenadas o Ubicación[cite: 1]
             if "COORDENADAS" in linea.upper() or "UBICACION" in linea.upper():
                 ubicacion_completa = linea
-                # Si la ubicación se extiende a la siguiente línea
                 if i + 1 < len(lineas) and ("(" in lineas[i+1] or ")" in lineas[i+1]):
                     ubicacion_completa += " " + lineas[i+1]
                 datos["Ubicación"] = ubicacion_completa
 
-            # Detectar Tipos y Subtipos comunes en los reportes
+            # Detectar Tipos y Subtipos comunes en los reportes[cite: 1]
             if "Alteracion" in linea or "Arma" in linea or "Violencia" in linea or "Robo" in linea or "Actitud" in linea or "Pánico" in linea:
                 if not datos["Tipo"]:
                     datos["Tipo"] = linea
 
-            # Capturar Bloque de Bitácora y Comentarios detallados
+            # Capturar Bloque de Bitácora y Comentarios detallados[cite: 3]
             if "Bitacora Incidente" in linea or "Comentario" in linea or "Del Usuario" in linea:
                 capturando_bitacora = True
                 i += 1
                 continue
 
             if capturando_bitacora:
-                # Evitamos duplicar encabezados institucionales largos al final
-                if "SISTEMA NACIONAL DE EMERGENCIAS" in linea or "Fecha de emisión" in linea:
+                if "SISTEMA NACIONAL DE EMERGENCIAS" in linea or "Fecha de emisión" in linea:[cite: 9]
                     capturando_bitacora = False
                 else:
                     bitacora_texto.append(linea)
@@ -96,9 +94,9 @@ def extraer_datos_pdf(ruta_pdf):
         datos["Bitácora y Acciones Policiales"] = " | ".join(bitacora_texto)
 
         # Fallback de respaldo si algún campo quedó vacío pero el texto lo contiene
-        if not datos["Tipo"] and "Alteracion de la Convivencia" in texto_completo:
+        if not datos["Tipo"] and "Alteracion de la Convivencia" in texto_completo:[cite: 1]
             datos["Tipo"] = "Alteracion de la Convivencia Pacífica"
-        if not datos["Subtipo"] and "Riña" in texto_completo:
+        if not datos["Subtipo"] and "Riña" in texto_completo:[cite: 1]
             datos["Subtipo"] = "Riña y Escándalo"
 
         return datos
@@ -121,6 +119,7 @@ if archivos_subidos:
     total_archivos = len(archivos_subidos)
 
     for i, archivo in enumerate(archivos_subidos):
+        # CORREGIDO: Se usa delete=False correctamente
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(archivo.getbuffer())
             ruta_temporal = tmp.name
