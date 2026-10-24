@@ -81,17 +81,18 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
                 if datos["Zona"] == "N/A":
                     datos["Zona"] = linea
 
-            # Capturar la línea de ubicación tal cual como aparece en el reporte oficial
-            if "UBICACION" in linea_up or "DIRECCION" in linea_up or "LUGAR" in linea_up:
-                if i + 1 < len(lineas):
-                    datos["Ubicación"] = lineas[i + 1]
-
-        # Si no la encontró por etiqueta directa, buscar respaldos limpios
-        if datos["Ubicación"] == "N/A":
-            for l in lineas:
-                l_up = l.upper()
-                if ("VERACRUZ" in l_up or "PALMAR" in l_up) and len(l) < 60:
-                    datos["Ubicación"] = l
+        # Capturar la ubicación exacta tipo COORDENADAS XY (...) desde el texto completo del PDF
+        match_coords = re.search(r'(COORDENADAS\s+XY\s*\([^)]+\))', texto_completo, re.IGNORECASE)
+        if match_coords:
+            datos["Ubicación"] = match_coords.group(1).replace("\n", " ")
+        else:
+            # Respaldo por líneas si las coordenadas están partidas
+            for i, linea in enumerate(lineas):
+                if "COORDENADAS" in linea.upper():
+                    ubi_txt = linea
+                    if i + 1 < len(lineas) and ")" in lineas[i+1]:
+                        ubi_txt += " " + lineas[i+1]
+                    datos["Ubicación"] = ubi_txt
                     break
 
         # Extracción de Fechas, Horas y Reportes de la bitácora
