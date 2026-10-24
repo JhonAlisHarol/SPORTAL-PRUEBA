@@ -68,7 +68,7 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
             "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"
         ]
 
-        # Detección precisa de Zona, Ubicación y Operador
+        # Detección precisa de Zona, Ubicación Completa y Operador
         for i, linea in enumerate(lineas):
             linea_up = linea.upper()
             
@@ -83,12 +83,15 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
                 if datos["Zona"] == "N/A":
                     datos["Zona"] = linea
 
-            # Buscar Ubicación real (evitando palabras genéricas)
+            # Buscar Ubicación real ampliada y completa (capturando el contexto geográfico detallado)
             if "UBICACION" in linea_up or "DIRECCION" in linea_up or "LUGAR" in linea_up:
                 if i + 1 < len(lineas):
-                    siguiente = lineas[i + 1]
-                    if len(siguiente) > 3 and "EXPUSO" not in siguiente.upper():
-                        datos["Ubicación"] = siguiente
+                    ubi_desc = lineas[i + 1]
+                    # Si la línea siguiente tiene más detalles o coordenadas, las unimos para que quede completo
+                    if i + 2 < len(lineas) and not any(kw in lineas[i + 2].upper() for kw in ["FECHA", "ESTADO", "TIPO", "INCIDENTE"]):
+                        ubi_desc += " - " + lineas[i + 2]
+                    if len(ubi_desc) > 3 and "EXPUSO" not in ubi_desc.upper():
+                        datos["Ubicación"] = ubi_desc
 
         # Respaldo para Operador si aparece en el texto general
         if datos["Operador"] == "N/A":
