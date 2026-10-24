@@ -1,16 +1,14 @@
 import os
 import re
 import tempfile
-import base64
 import pandas as pd
 from pypdf import PdfReader
 import streamlit as st
 
-# Configuración de la página
-st.set_page_config(page_title="Procesador Masivo S.PORTAL con Visor PDF", page_icon="📄", layout="wide")
+st.set_page_config(page_title="Procesador Masivo S.PORTAL", page_icon="📊", layout="wide")
 
-st.title("📄 Procesador Masivo y Visor de PDF - S.PORTAL")
-st.write("Sube tu PDF masivo de listado general para procesarlo automáticamente y visualizarlo directamente en la aplicación.")
+st.title("📊 Procesador Masivo y Consolidador S.PORTAL")
+st.write("Sube tu PDF masivo de listado general para extraer todos los casos al instante y obtener tus archivos listos para descargar.")
 
 def procesar_pdf_masivo(ruta_pdf):
     """Procesa el PDF de listado general de S.PORTAL y extrae de forma limpia todos los incidentes."""
@@ -104,12 +102,6 @@ def procesar_pdf_masivo(ruta_pdf):
     except Exception as e:
         return []
 
-def mostrar_visor_pdf(archivo_bytes):
-    """Genera un visor visual integrado para el PDF dentro de Streamlit."""
-    base64_pdf = base64.b64encode(archivo_bytes).decode('utf-8')
-    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600px" type="application/pdf"></iframe>'
-    st.markdown(pdf_display, unsafe_allow_html=True)
-
 # Interfaz de carga
 archivo_pdf = st.file_uploader("Sube el PDF de listado general de S.PORTAL:", type=["pdf"])
 
@@ -128,27 +120,35 @@ if archivo_pdf:
         df_final = pd.DataFrame(resultados)
         st.success(f"¡Procesamiento masivo exitoso! Se han consolidado {len(df_final)} casos en total.")
         
-        # Pestañas para organizar la vista previa del Excel y el Visor del PDF original
-        pestana1, pestana2 = st.tabs(["📊 Vista Previa Matriz Excel", "👀 Visor del PDF Original"])
+        st.subheader("Vista previa de la Matriz Maestra:")
+        st.dataframe(df_final)
 
-        with pestana1:
-            st.subheader("Datos Estructurados:")
-            st.dataframe(df_final)
+        # Contenedor de descargas directas
+        st.markdown("---")
+        st.subheader("📥 Opciones de Descarga")
+        
+        col1, col2 = st.columns(2)
 
+        with col1:
             nombre_excel = "Matriz_Operativa_S_PORTAL.xlsx"
             df_final.to_excel(nombre_excel, index=False)
-
             with open(nombre_excel, "rb") as f:
                 st.download_button(
-                    label="📥 Descargar Archivo Excel Consolidado Maestro",
+                    label="📊 Descargar Excel Consolidado Maestro",
                     data=f,
                     file_name=nombre_excel,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
                 )
 
-        with pestana2:
-            st.subheader("Documento PDF Original Integrado:")
-            mostrar_visor_pdf(bytes_pdf)
+        with col2:
+            st.download_button(
+                label="📄 Descargar PDF Original Resguardado",
+                data=bytes_pdf,
+                file_name="Reporte_Original_S_Portal.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
 
     else:
         st.error("No se pudieron extraer datos válidos del PDF.")
