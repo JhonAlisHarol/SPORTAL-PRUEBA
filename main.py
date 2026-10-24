@@ -61,13 +61,14 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
 
         lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-        # Detección inteligente de Zona, Ubicación y Operador en el texto del PDF
+        # Lista de operadores frecuentes del C5
         operadores_conocidos = [
             "ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", 
             "IVETTE GIERHART", "JOAQUIN CHI", "DALILA TREJOS", 
             "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"
         ]
 
+        # Detección precisa de Zona, Ubicación y Operador
         for i, linea in enumerate(lineas):
             linea_up = linea.upper()
             
@@ -77,17 +78,19 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
                     datos["Operador"] = op
                     break
             
-            # Buscar Zona (ej. ZP, ZF o códigos similares)
+            # Buscar Zona (ej. 12ZP, ZF)
             if (re.search(r'\b\d{0,2}[A-Z]{1,3}\b', linea) and len(linea) <= 6) and ("ZP" in linea_up or "ZF" in linea_up or "ZONA" in linea_up):
                 if datos["Zona"] == "N/A":
                     datos["Zona"] = linea
 
-            # Buscar Ubicación
+            # Buscar Ubicación real (evitando palabras genéricas)
             if "UBICACION" in linea_up or "DIRECCION" in linea_up or "LUGAR" in linea_up:
                 if i + 1 < len(lineas):
-                    datos["Ubicación"] = lineas[i + 1]
+                    siguiente = lineas[i + 1]
+                    if len(siguiente) > 3 and "EXPUSO" not in siguiente.upper():
+                        datos["Ubicación"] = siguiente
 
-        # Si no se halló operador de forma directa, buscamos en los primeros reportes donde suele aparecer
+        # Respaldo para Operador si aparece en el texto general
         if datos["Operador"] == "N/A":
             for op in operadores_conocidos:
                 if op in texto_completo.upper():
@@ -121,8 +124,11 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
             fin_texto = marcas_tiempo[idx_m + 1]["pos"] if idx_m + 1 < len(marcas_tiempo) else len(texto_completo)
             fragmento = texto_completo[inicio_texto:fin_texto]
             
-            # Limpieza manteniendo el nombre del operador si aparece ahí
+            # Limpieza de etiquetas y nombres de operadores repetidos en la bitácora
             fragmento_limpio = fragmento.replace("Comentario Del Usuario", "").replace("\n", " ").strip()
+            if datos["Operador"] != "N/A":
+                fragmento_limpio = fragmento_limpio.replace(datos["Operador"], "").strip()
+            
             datos[f"Reporte {num_rep}"] = fragmento_limpio
 
         if not marcas_tiempo and texto_completo:
