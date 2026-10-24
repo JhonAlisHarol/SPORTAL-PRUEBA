@@ -27,7 +27,7 @@ st.dataframe(df_vacio, use_container_width=True)
 st.markdown("---")
 
 def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
-    """Extracción optimizada y veloz manteniendo intacta la lógica de tus reportes."""
+    """Extracción optimizada y veloz con análisis inteligente de ubicación en la narrativa."""
     try:
         reader = PdfReader(ruta_pdf)
         texto_completo = ""
@@ -68,45 +68,20 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
             "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"
         ]
 
-        # Detección estricta y limpia de Zona, Operador y Ubicación Geográfica
+        # Detección de Zona y Operador
         for i, linea in enumerate(lineas):
             linea_up = linea.upper()
             
-            # Buscar Operador
             for op in operadores_conocidos:
                 if op in linea_up:
                     datos["Operador"] = op
                     break
             
-            # Buscar Zona (ej. 12ZP, ZF)
             if (re.search(r'\b\d{0,2}[A-Z]{1,3}\b', linea) and len(linea) <= 6) and ("ZP" in linea_up or "ZF" in linea_up or "ZONA" in linea_up):
                 if datos["Zona"] == "N/A":
                     datos["Zona"] = linea
 
-            # Configuración limpia de Ubicación: solo líneas que parezcan dirección o coordenadas, excluyendo narrativa
-            if "UBICACION" in linea_up or "DIRECCION" in linea_up or "LUGAR" in linea_up:
-                if i + 1 < len(lineas):
-                    candidata = lineas[i + 1]
-                    candidata_up = candidata.upper()
-                    # Validar que no sea parte de la bitácora o texto narrativo largo
-                    if len(candidata) < 50 and not any(kw in candidata_up for kw in ["SE PROCEDIO", "INICA", "INIDCA", "INFORMA", "UNIDAD", "ALERTANTE"]):
-                        datos["Ubicación"] = candidata
-
-        # Respaldo geográfico limpio por palabras clave si la etiqueta directa no bastó
-        if datos["Ubicación"] == "N/A" or len(datos["Ubicación"]) < 3:
-            for l in lineas:
-                l_up = l.upper()
-                if ("VERACRUZ" in l_up or "PALMAR" in l_up) and len(l) < 40 and "INIDCA" not in l_up and "SE PROCEDIO" not in l_up:
-                    datos["Ubicación"] = l
-                    break
-
-        # Respaldo para Operador si aparece en el texto general
-        if datos["Operador"] == "N/A":
-            for op in operadores_conocidos:
-                if op in texto_completo.upper():
-                    datos["Operador"] = op
-                    break
-
+        # Extracción de Fechas, Horas y Reportes de la bitácora
         patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
         matches = list(re.finditer(patron_fh, texto_completo))
 
@@ -134,7 +109,6 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
             fin_texto = marcas_tiempo[idx_m + 1]["pos"] if idx_m + 1 < len(marcas_tiempo) else len(texto_completo)
             fragmento = texto_completo[inicio_texto:fin_texto]
             
-            # Limpieza de etiquetas y nombres de operadores repetidos en la bitácora
             fragmento_limpio = fragmento.replace("Comentario Del Usuario", "").replace("\n", " ").strip()
             if datos["Operador"] != "N/A":
                 fragmento_limpio = fragmento_limpio.replace(datos["Operador"], "").strip()
@@ -143,6 +117,31 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
 
         if not marcas_tiempo and texto_completo:
             datos["Reporte 1"] = texto_completo[:500].replace("\n", " ").strip()
+
+        # 🧠 ANALIZADOR INTELIGENTE DE UBICACIÓN DESDE LA NARRATIVA
+        texto_analisis = datos["Reporte 1"] if datos["Reporte 1"] else texto_completo
+        
+        # Patrón para extraer exactamente el tramo de dirección (ej: "veracruz, el palmar, calle principal, frente al mister precio")
+        match_ubicacion_narrativa = re.search(r'(?:en|que en|ubicado en|sector)\s+([^,]+(?:,\s*[^,]+){1,5}?)(?=\s+(?:se\s+está|se\s+esta|se\s+procedió|se\s+procedio|hay|reportan|ocurrió|ocurrio|con\s+la\s+finalidad))', texto_analisis, re.IGNORECASE)
+        
+        if match_ubicacion_narrativa:
+            ubicacion_extraida = match_ubicacion_narrativa.group(1).strip()
+            ubicacion_extraida = re.sub(r'[\.,;]+$', '', ubicacion_extraida) # Limpiar puntos o comas finales
+            datos["Ubicación"] = ubicacion_extraida
+        else:
+            # Respaldo buscando palabras clave geográficas directamente en el texto
+            for l in lineas:
+                l_up = l.upper()
+                if ("VERACRUZ" in l_up or "PALMAR" in l_up) and len(l) < 60 and "INIDCA" not in l_up and "SE PROCEDIO" not in l_up:
+                    datos["Ubicación"] = l
+                    break
+
+        # Respaldo para Operador si aparece en el texto general
+        if datos["Operador"] == "N/A":
+            for op in operadores_conocidos:
+                if op in texto_completo.upper():
+                    datos["Operador"] = op
+                    break
 
         return datos
     except Exception as e:
