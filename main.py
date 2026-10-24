@@ -68,7 +68,7 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
             "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"
         ]
 
-        # Detección precisa de Zona, Operador y Ubicación Completa
+        # Detección estricta y limpia de Zona, Operador y Ubicación Geográfica
         for i, linea in enumerate(lineas):
             linea_up = linea.upper()
             
@@ -83,27 +83,22 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
                 if datos["Zona"] == "N/A":
                     datos["Zona"] = linea
 
-            # Configuración mejorada: Captura de Ubicación Completa y Detallada
+            # Configuración limpia de Ubicación: solo líneas que parezcan dirección o coordenadas, excluyendo narrativa
             if "UBICACION" in linea_up or "DIRECCION" in linea_up or "LUGAR" in linea_up:
-                partes_ubi = []
-                for j in range(i, min(i + 3, len(lineas))):
-                    l_text = lineas[j]
-                    if j == i:
-                        l_text = re.sub(r'Ubicaci[oó]n|Direcci[oó]n|Lugar', '', l_text, flags=re.IGNORECASE).strip()
-                    if l_text and "EXPUSO" not in l_text.upper() and not any(kw in l_text.upper() for kw in ["FECHA", "ESTADO", "TIPO", "INCIDENTE", "ZONA"]):
-                        partes_ubi.append(l_text)
-                if partes_ubi:
-                    ubicacion_completa = " ".join(partes_ubi).strip()
-                    if len(ubicacion_completa) > 2:
-                        datos["Ubicación"] = ubicacion_completa
+                if i + 1 < len(lineas):
+                    candidata = lineas[i + 1]
+                    candidata_up = candidata.upper()
+                    # Validar que no sea parte de la bitácora o texto narrativo largo
+                    if len(candidata) < 50 and not any(kw in candidata_up for kw in ["SE PROCEDIO", "INICA", "INIDCA", "INFORMA", "UNIDAD", "ALERTANTE"]):
+                        datos["Ubicación"] = candidata
 
-        # Respaldo geográfico completo (ej. si menciona Veracruz o El Palmar en las líneas)
-        if datos["Ubicación"] == "N/A" or len(datos["Ubicación"]) < 5:
+        # Respaldo geográfico limpio por palabras clave si la etiqueta directa no bastó
+        if datos["Ubicación"] == "N/A" or len(datos["Ubicación"]) < 3:
             for l in lineas:
-                if "VERACRUZ" in l.upper() or "PALMAR" in l.upper():
-                    if len(l) > 4 and "EXPUSO" not in l.upper():
-                        datos["Ubicación"] = l
-                        break
+                l_up = l.upper()
+                if ("VERACRUZ" in l_up or "PALMAR" in l_up) and len(l) < 40 and "INIDCA" not in l_up and "SE PROCEDIO" not in l_up:
+                    datos["Ubicación"] = l
+                    break
 
         # Respaldo para Operador si aparece en el texto general
         if datos["Operador"] == "N/A":
@@ -202,4 +197,4 @@ if archivos_subidos:
         else:
             st.error("No se pudieron extraer datos de los archivos seleccionados.")
 else:
-    st.info("Por favor, selecciona o arrastra tus archivos PDF para iniciar el proceso de captura.")
+    st.info("Por favor, selecciona o arrastra tu lote de PDFs para iniciar la captura.")
