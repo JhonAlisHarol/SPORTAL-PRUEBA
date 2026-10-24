@@ -34,17 +34,17 @@ def extraer_datos_pdf(ruta_pdf):
             "Bitácora y Acciones Policiales": ""
         }
 
-        # 1. Número de Incidente (Ej: P20260238869)
+        # 1. Número de Incidente (Ej: P20260238869)[cite: 9]
         match_incidente = re.search(r'(P\d{10,12})', texto_completo)
         if match_incidente:
             datos["Incidente"] = match_incidente.group(1)
 
-        # 2. Fecha de Creación (Ej: 23/10/2026 0:01:03)
+        # 2. Fecha de Creación (Ej: 23/10/2026 0:01:03)[cite: 9]
         match_creacion = re.search(r'(\d{2}/\d{2}/\d{4}\s+\d{1,2}:\d{2}:\d{2})', texto_completo)
         if match_creacion:
             datos["Creación"] = match_creacion.group(1)
 
-        # 3. Extracción y limpieza de la bitácora de comentarios y acciones
+        # 3. Extracción y limpieza de la bitácora de comentarios y acciones[cite: 9]
         lineas = texto_completo.split('\n')
         bitacora_acumulada = []
         capturando = False
