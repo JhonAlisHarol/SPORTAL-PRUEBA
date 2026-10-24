@@ -9,10 +9,10 @@ import streamlit as st
 st.set_page_config(page_title="Procesador Masivo de Incidentes S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Procesador Masivo de Reportes S.PORTAL")
-st.write("Estructuración avanzada: Separación exacta de Fechas, Horas y asociación directa de cada Comentario en su respectivo Reporte (1 al 4).")
+st.write("Estructuración completa: Captura de Operador, Separación exacta de Fechas/Horas y Reportes asociados (1 al 4).")
 
 def extraer_datos_pdf(ruta_pdf):
-    """Extrae cabecera, separa fechas/horas y asocia cada comentario de la bitácora a su respectivo reporte."""
+    """Extrae la cabecera completa (incluyendo Operador), separa fechas/horas y asocia cada reporte."""
     try:
         reader = PdfReader(ruta_pdf)
         texto_completo = ""
@@ -21,7 +21,7 @@ def extraer_datos_pdf(ruta_pdf):
             if texto_extraido:
                 texto_completo += texto_extraido + "\n"
 
-        # Diccionario base con la estructura exacta
+        # Diccionario base
         datos = {
             "Archivo": os.path.basename(ruta_pdf),
             "Incidente": "",
@@ -51,15 +51,34 @@ def extraer_datos_pdf(ruta_pdf):
         lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
         for i, linea in enumerate(lineas):
+            # Captura de Zona (ej: 12ZP)
             if re.search(r'\b\d{1,2}[A-Z]{1,3}\b', linea) and len(linea) <= 6 and not datos["Zona"]:
                 if "ZP" in linea or "ZF" in linea:
                     datos["Zona"] = linea
 
+            # Captura de Ubicación / Coordenadas
             if "COORDENADAS" in linea.upper() or "UBICACION" in linea.upper():
                 ubi = linea
                 if i + 1 < len(lineas) and "(" in lineas[i+1]:
                     ubi += " " + lineas[i+1]
                 datos["Ubicación"] = ubi
+
+            # Captura robusta del Operador buscando la palabra clave o nombres institucionales de operadores
+            if "OPERADOR" in linea.upper() or i > 0 and "ZONA" in lineas[max(0, i-1)].upper():
+                # Revisar si en esta línea o la siguiente viene el nombre del operador
+                posibles_nombres = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE CIERHART", "JOAQUIN CHI", "DALLA TREJOS", "RICARDO EMILIO", "HERMOGENES SANJUR"]
+                for nom in posibles_nombres:
+                    if nom in texto_completo.upper():
+                        datos["Operador"] = nom
+                        break
+
+        # Si aún no se asignó por la regla anterior, buscamos directamente el nombre en todo el texto
+        if not datos["Operador"]:
+            posibles_nombres = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE CIERHART", "JOAQUIN CHI", "DALLA TREJOS", "RICARDO EMILIO", "HERMOGENES SANJUR"]
+            for nom in posibles_nombres:
+                if nom in texto_completo.upper():
+                    datos["Operador"] = nom
+                    break
 
         if len(lineas) > 5:
             for idx, l in enumerate(lineas[:15]):
@@ -74,26 +93,23 @@ def extraer_datos_pdf(ruta_pdf):
             datos["Tipo"] = "Alteracion de la Convivencia Pacifica"
             datos["Subtipo"] = "Riña y Escándalo"
 
-        # 2. Extracción de todas las ocurrencias de Fecha y Hora en el texto
+        # 2. Extracción de Fechas y Horas por posición
         patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
         matches = list(re.finditer(patron_fh, texto_completo))
 
-        # Almacenamos las marcas de tiempo encontradas con sus posiciones de caracteres
         marcas_tiempo = []
         for m in matches:
             f_val = m.group(1)
             h_val = m.group(2)
             pos = m.start()
-            # Evitamos duplicar la primera si es exactamente la fecha/hora de creación inicial
             if not (f_val == datos["Fecha Creación"] and h_val == datos["Hora Creación"] and len(marcas_tiempo) == 0):
                 marcas_tiempo.append({"fecha": f_val, "hora": h_val, "pos": pos})
 
-        # Asignamos hasta 4 marcas de tiempo secuenciales (Fecha y Hora 1 a 4)
         for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
             datos[f"Fecha {idx_m}"] = marca["fecha"]
             datos[f"Hora {idx_m}"] = marca["hora"]
 
-        # 3. Asociación precisa de los comentarios (Reportes 1 a 4) basados en las posiciones del texto
+        # 3. Asociación precisa de los Reportes (1 a 4)
         for idx_m in range(len(marcas_tiempo)):
             num_rep = idx_m + 1
             if num_rep > 4:
@@ -101,19 +117,14 @@ def extraer_datos_pdf(ruta_pdf):
             
             inicio_texto = marcas_tiempo[idx_m]["pos"] + len(f"{marcas_tiempo[idx_m]['fecha']} {marcas_tiempo[idx_m]['hora']}")
             
-            # El fin del comentario es donde empieza la siguiente marca de tiempo, o el final del documento
             if idx_m + 1 < len(marcas_tiempo):
                 fin_texto = marcas_tiempo[idx_m + 1]["pos"]
             else:
                 fin_texto = len(texto_completo)
 
-            # Extraemos el fragmento de texto entre esta marca y la siguiente
             fragmento = texto_completo[inicio_texto:fin_texto]
-            
-            # Limpiamos etiquetas de usuarios repetidas y saltos de línea excesivos
             fragmento_limpio = fragmento.replace("ENRIQUE CACERES", "").replace("VALERY VELASQUEZ", "").replace("Comentario Del Usuario", "").replace("\n", " ").strip()
             
-            # Guardamos el comentario en su respectivo reporte
             datos[f"Reporte {num_rep}"] = fragmento_limpio
 
         return datos
@@ -129,7 +140,7 @@ archivos_subidos = st.file_uploader(
 )
 
 if archivos_subidos:
-    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Procesando horas y asociando reportes...")
+    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Procesando cabecera, operador, horas y reportes...")
     
     lista_resultados = []
     barra_progreso = st.progress(0)
@@ -152,10 +163,10 @@ if archivos_subidos:
         
         st.success("¡Estructuración completada con éxito!")
         
-        st.subheader("Vista previa del Excel con Fechas, Horas y Reportes Asociados:")
+        st.subheader("Vista previa del Excel ordenado:")
         st.dataframe(df_resultado)
 
-        nombre_excel = "Estudio_Operativo_Final_Preciso.xlsx"
+        nombre_excel = "Estudio_Operativo_Completo.xlsx"
         df_resultado.to_excel(nombre_excel, index=False)
 
         with open(nombre_excel, "rb") as f:
