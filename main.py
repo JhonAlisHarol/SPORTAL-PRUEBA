@@ -9,10 +9,10 @@ import streamlit as st
 st.set_page_config(page_title="Procesador Masivo de Incidentes S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Procesador Masivo de Reportes S.PORTAL")
-st.write("Estructuración completa: Captura de Operador, Separación exacta de Fechas/Horas y Reportes asociados (1 al 4).")
+st.write("Estructuración completa: Captura exacta del Operador, Fechas/Horas separadas y Reportes asociados (1 al 4).")
 
 def extraer_datos_pdf(ruta_pdf):
-    """Extrae la cabecera completa (incluyendo Operador), separa fechas/horas y asocia cada reporte."""
+    """Extrae la cabecera completa, captura el operador por posición, separa fechas/horas y asocia cada reporte."""
     try:
         reader = PdfReader(ruta_pdf)
         texto_completo = ""
@@ -38,7 +38,7 @@ def extraer_datos_pdf(ruta_pdf):
             "Fecha 4": "", "Hora 4": "", "Reporte 4": ""
         }
 
-        # 1. Cabecera general
+        # 1. Incidente y Fecha/Hora de Creación[cite: 9]
         match_incidente = re.search(r'(P\d{10,12})', texto_completo)
         if match_incidente:
             datos["Incidente"] = match_incidente.group(1)
@@ -51,35 +51,19 @@ def extraer_datos_pdf(ruta_pdf):
         lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
         for i, linea in enumerate(lineas):
-            # Captura de Zona (ej: 12ZP)
+            # Captura de Zona (ej: 12ZP)[cite: 1, 9]
             if re.search(r'\b\d{1,2}[A-Z]{1,3}\b', linea) and len(linea) <= 6 and not datos["Zona"]:
                 if "ZP" in linea or "ZF" in linea:
                     datos["Zona"] = linea
 
-            # Captura de Ubicación / Coordenadas
+            # Captura de Ubicación / Coordenadas[cite: 1, 9]
             if "COORDENADAS" in linea.upper() or "UBICACION" in linea.upper():
                 ubi = linea
                 if i + 1 < len(lineas) and "(" in lineas[i+1]:
                     ubi += " " + lineas[i+1]
                 datos["Ubicación"] = ubi
 
-            # Captura robusta del Operador buscando la palabra clave o nombres institucionales de operadores
-            if "OPERADOR" in linea.upper() or i > 0 and "ZONA" in lineas[max(0, i-1)].upper():
-                # Revisar si en esta línea o la siguiente viene el nombre del operador
-                posibles_nombres = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE CIERHART", "JOAQUIN CHI", "DALLA TREJOS", "RICARDO EMILIO", "HERMOGENES SANJUR"]
-                for nom in posibles_nombres:
-                    if nom in texto_completo.upper():
-                        datos["Operador"] = nom
-                        break
-
-        # Si aún no se asignó por la regla anterior, buscamos directamente el nombre en todo el texto
-        if not datos["Operador"]:
-            posibles_nombres = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE CIERHART", "JOAQUIN CHI", "DALLA TREJOS", "RICARDO EMILIO", "HERMOGENES SANJUR"]
-            for nom in posibles_nombres:
-                if nom in texto_completo.upper():
-                    datos["Operador"] = nom
-                    break
-
+        # Tipo y Subtipo[cite: 1, 9]
         if len(lineas) > 5:
             for idx, l in enumerate(lineas[:15]):
                 if datos["Incidente"] in l:
@@ -93,7 +77,19 @@ def extraer_datos_pdf(ruta_pdf):
             datos["Tipo"] = "Alteracion de la Convivencia Pacifica"
             datos["Subtipo"] = "Riña y Escándalo"
 
-        # 2. Extracción de Fechas y Horas por posición
+        # Captura precisa del Operador por posición (Texto ubicado entre la zona y la fecha de creación)[cite: 9]
+        match_operador = re.search(r'(?:12ZP|12ZF|\d{1,2}[A-Z]{1,3})\s+([A-ZÁÉÍÓÚÑ]+\s+[A-ZÁÉÍÓÚÑ]+)\s+\d{2}/\d{2}/\d{4}', texto_completo)
+        if match_operador:
+            datos["Operador"] = match_operador.group(1).strip()
+        else:
+            # Respaldo por búsqueda directa de nombres frecuentes en el sistema
+            posibles_nombres = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE CIERHART", "JOAQUIN CHI", "DALLA TREJOS", "RICARDO EMILIO", "HERMOGENES SANJUR", "ARMANDO GONZALEZ"]
+            for nom in posibles_nombres:
+                if nom in texto_completo.upper():
+                    datos["Operador"] = nom
+                    break
+
+        # 2. Extracción de Fechas y Horas por posición (1 a 4)
         patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
         matches = list(re.finditer(patron_fh, texto_completo))
 
