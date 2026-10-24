@@ -121,7 +121,7 @@ if archivos_subidos:
     total_archivos = len(archivos_subidos)
 
     for i, archivo in enumerate(archivos_subidos):
-        with tempfile.NamedTemporaryFile(delete5=False, suffix=".pdf") as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(archivo.getbuffer())
             ruta_temporal = tmp.name
 
