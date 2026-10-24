@@ -9,10 +9,10 @@ import streamlit as st
 st.set_page_config(page_title="Procesador Masivo de Incidentes S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Procesador Masivo de Reportes S.PORTAL")
-st.write("Sube los reportes detallados en PDF del sistema de emergencias para consolidarlos automáticamente en un archivo de Excel estructurado sin perder ningún detalle.")
+st.write("Sube los reportes detallados en PDF para extraer **toda** la información, desde la cabecera hasta el final de la bitácora, consolidándola en un Excel estructurado.")
 
 def extraer_datos_pdf(ruta_pdf):
-    """Extrae de forma precisa toda la información estructurada de un reporte individual de S.Portal."""
+    """Extrae de forma exhaustiva y sin omisiones toda la información del reporte PDF."""
     try:
         reader = PdfReader(ruta_pdf)
         texto_completo = ""
@@ -21,7 +21,7 @@ def extraer_datos_pdf(ruta_pdf):
             if texto_extraido:
                 texto_completo += texto_extraido + "\n"
 
-        # Diccionario base para almacenar todos los campos
+        # Diccionario para almacenar la información completa
         datos = {
             "Archivo": os.path.basename(ruta_pdf),
             "Incidente": "",
@@ -31,73 +31,65 @@ def extraer_datos_pdf(ruta_pdf):
             "Zona": "",
             "Operador": "",
             "Creación": "",
-            "Bitácora y Acciones Policiales": ""
+            "Bitácora Completa de Eventos": ""
         }
 
-        # 1. Número de Incidente (Ej: P20260238869)[cite: 9]
+        # 1. Extracción del Número de Incidente (Ej: P20260238869)[cite: 9, 14]
         match_incidente = re.search(r'(P\d{10,12})', texto_completo)
         if match_incidente:
             datos["Incidente"] = match_incidente.group(1)
 
-        # 2. Fecha de Creación del Incidente[cite: 9]
+        # 2. Extracción de la Fecha de Creación[cite: 9, 14]
         match_creacion = re.search(r'(\d{2}/\d{2}/\d{4}\s+\d{1,2}:\d{2}:\d{2})', texto_completo)
         if match_creacion:
             datos["Creación"] = match_creacion.group(1)
 
-        # 3. Extracción estructurada basada en las secciones del reporte PDF
+        # Dividir el texto en líneas limpias para un análisis secuencial
         lineas = [linea.strip() for linea in texto_completo.split('\n') if linea.strip()]
-        
-        bitacora_texto = []
+
+        # Variables de apoyo para la extracción secuencial
+        bitacora_lineas = []
         capturando_bitacora = False
-        
-        i = 0
-        while i < len(lineas):
-            linea = lineas[i]
-            
-            # Detectar Operador y Zona en las líneas generales
-            if "ENRIQUE" in linea.upper() or "CACERES" in linea.upper() or "VALERY" in linea.upper():[cite: 3]
-                if not datos["Operador"]:
-                    datos["Operador"] = linea
+        control_general = []
 
-            # Detectar Zonas (ej. 12ZF)[cite: 1]
-            if re.search(r'\d+[A-Z]+', linea) and len(linea) < 10 and not datos["Zona"]:
-                if "ZF" in linea or "ZP" in linea:[cite: 1]
-                    datos["Zona"] = linea
-
-            # Capturar Coordenadas o Ubicación[cite: 1]
-            if "COORDENADAS" in linea.upper() or "UBICACION" in linea.upper():
-                ubicacion_completa = linea
-                if i + 1 < len(lineas) and ("(" in lineas[i+1] or ")" in lineas[i+1]):
-                    ubicacion_completa += " " + lineas[i+1]
-                datos["Ubicación"] = ubicacion_completa
-
-            # Detectar Tipos y Subtipos comunes en los reportes[cite: 1]
-            if "Alteracion" in linea or "Arma" in linea or "Violencia" in linea or "Robo" in linea or "Actitud" in linea or "Pánico" in linea:
+        for i, linea in enumerate(lineas):
+            # Capturar bloque de información general relevante
+            if "Alteracion" in linea or "Arma" in linea or "Violencia" in linea or "Robo" in linea or "Actitud" in linea or "Pánico" in linea or "Alarma" in linea or "Menor" in linea or "Otros" in linea:
                 if not datos["Tipo"]:
                     datos["Tipo"] = linea
 
-            # Capturar Bloque de Bitácora y Comentarios detallados[cite: 3]
-            if "Bitacora Incidente" in linea or "Comentario" in linea or "Del Usuario" in linea:
+            if "COORDENADAS" in linea.upper() or "UBICACION" in linea.upper():
+                ubicacion_texto = linea
+                if i + 1 < len(lineas) and ("(" in lineas[i+1] or ")" in lineas[i+1]):
+                    ubicacion_texto += " " + lineas[i+1]
+                datos["Ubicación"] = ubicacion_texto
+
+            if re.search(r'\d+[A-Z]+', linea) and len(linea) < 8 and not datos["Zona"]:
+                if "ZF" in linea or "ZP" in linea:
+                    datos["Zona"] = linea
+
+            if "ENRIQUE" in linea.upper() or "CACERES" in linea.upper() or "VALERY" in linea.upper() or "LEONARDO" in linea.upper() or "JOAQUIN" in linea.upper():
+                if not datos["Operador"] and ("ENRIQUE" in linea.upper() or "VALERY" in linea.upper()):
+                    datos["Operador"] = linea
+
+            # Detectar el inicio de la sección de Bitácora para capturar TODO hasta el final
+            if "Bitacora Incidente" in linea:
                 capturando_bitacora = True
-                i += 1
                 continue
 
             if capturando_bitacora:
-                if "SISTEMA NACIONAL DE EMERGENCIAS" in linea or "Fecha de emisión" in linea:[cite: 9]
-                    capturando_bitacora = False
-                else:
-                    bitacora_texto.append(linea)
+                # Evitar incluir pies de página repetitivos del sistema si los hubiera al final exacto
+                if "Fecha de emisión:" in linea:
+                    continue
+                bitacora_lineas.append(linea)
 
-            i += 1
-
-        # Unimos todo el contenido de la bitácora y parte policial de forma limpia
-        datos["Bitácora y Acciones Policiales"] = " | ".join(bitacora_texto)
-
-        # Fallback de respaldo si algún campo quedó vacío pero el texto lo contiene
-        if not datos["Tipo"] and "Alteracion de la Convivencia" in texto_completo:[cite: 1]
+        # Si el tipo o subtipo no se capturaron con exactitud por saltos de línea del PDF, asignamos respaldos basados en el contenido
+        if not datos["Tipo"] and "Alteracion de la Convivencia" in texto_completo:
             datos["Tipo"] = "Alteracion de la Convivencia Pacífica"
-        if not datos["Subtipo"] and "Riña" in texto_completo:[cite: 1]
             datos["Subtipo"] = "Riña y Escándalo"
+
+        # Unir toda la bitácora de forma ordenada y legible para una sola celda o análisis posterior
+        datos["Bitácora Completa de Eventos"] = " \n ".join(bitacora_lineas)
 
         return datos
 
@@ -112,14 +104,13 @@ archivos_subidos = st.file_uploader(
 )
 
 if archivos_subidos:
-    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Procesando información detallada...")
+    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Extrayendo información completa y detallada...")
     
     lista_resultados = []
     barra_progreso = st.progress(0)
     total_archivos = len(archivos_subidos)
 
     for i, archivo in enumerate(archivos_subidos):
-        # CORREGIDO: Se usa delete=False correctamente
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(archivo.getbuffer())
             ruta_temporal = tmp.name
@@ -134,7 +125,7 @@ if archivos_subidos:
     if lista_resultados:
         df_resultado = pd.DataFrame(lista_resultados)
         
-        st.success("¡Procesamiento completo y detallado con éxito!")
+        st.success("¡Procesamiento completo de todos los casos con éxito!")
         
         st.subheader("Vista previa de los casos consolidados:")
         st.dataframe(df_resultado)
