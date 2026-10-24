@@ -1,87 +1,95 @@
 import os
-import time
+import re
 import pandas as pd
-from playwright.sync_api import sync_playwright
+from pypdf import PdfReader
 
-def extraer_incidentes_s_portal():
-    print("Iniciando el navegador automatizado...")
+def extraer_datos_pdf(ruta_pdf):
+    """Extrae la información estructurada de un reporte individual de S.Portal."""
+    try:
+        reader = PdfReader(ruta_pdf)
+        texto_completo = ""
+        for pagina in reader.pages:
+            texto_extraido = pagina.extract_text()
+            if texto_extraido:
+                texto_completo += texto_extraido + "\n"
+
+        # Diccionario para almacenar los campos extraídos
+        datos = {
+            "Archivo": os.path.basename(ruta_pdf),
+            "Incidente": "",
+            "Tipo": "",
+            "Subtipo": "",
+            "Ubicación": "",
+            "Zona": "",
+            "Operador": "",
+            "Creación": "",
+            "Bitácora y Acciones Policiales": ""
+        }
+
+        # Extracción mediante expresiones regulares basadas en el formato del reporte
+        # 1. Número de Incidente (Ej: P20260238869)
+        match_incidente = re.search(r'(P\d{10,12})', texto_completo)
+        if match_incidente:
+            datos["Incidente"] = match_incidente.group(1)
+
+        # 2. Fecha de Creación (Ej: 23/10/2026 0:01:03)
+        match_creacion = re.search(r'(\d{2}/\d{2}/\d{4}\s+\d{1,2}:\d{2}:\d{2})', texto_completo)
+        if match_creacion:
+            datos["Creación"] = match_creacion.group(1)
+
+        # 3. Extracción de bloques de bitácora y comentarios
+        # Buscamos las líneas de comentarios y parte policial para unificarlas en el análisis
+        lineas = texto_completo.split('\n')
+        bitacora_acumulada = []
+        
+        capturando = False
+        for linea in lineas:
+            if "Bitacora Incidente" in linea or "Comentario" in linea:
+                capturando = True
+                continue
+            if capturando and linea.strip():
+                bitacora_acumulada.append(linea.strip())
+
+        datos["Bitácora y Acciones Policiales"] = " | ".join(bitacora_acumulada)
+
+        return datos
+
+    except Exception as e:
+        print(f"Error procesando {ruta_pdf}: {e}")
+        return None
+
+def procesar_carpeta_incidentes(carpeta_entrada="reportes_pdf", archivo_salida="Excel_Maestro_Incidentes.xlsx"):
+    """Recorre una carpeta con múltiples PDFs de incidentes y genera un Excel consolidado."""
+    if not os.path.exists(carpeta_entrada):
+        os.makedirs(carpeta_entrada)
+        print(f"Se ha creado la carpeta '{carpeta_entrada}'. Coloca allí los PDFs exportados de los casos.")
+        return
+
+    archivos = [f for f in os.listdir(carpeta_entrada) if f.lower().endswith('.pdf')]
     
-    with sync_playwright() as p:
-        # Lanzamos el navegador en modo visible (headless=False) para que puedas ver el proceso
-        browser = p.chromium.launch(headless=False, slow_mo=100)
-        page = browser.new_page()
-        
-        # 1. URL de acceso al S.Portal / Hexagon
-        url_portal = "https://c5-cad-app.c5.gob.pa/Tupa/PNPC5"
-        print(f"Navegando a: {url_portal}")
-        page.goto(url_portal)
-        
-        # 2. INICIO DE SESIÓN
-        print("\n" + "="*50)
-        print("INSTRUCCIÓN:")
-        print("Inicia sesión manualmente en la ventana del navegador que se abrió.")
-        print("Navega hasta la sección de 'Detalles de Incidentes' donde se ve la lista y el rango de fechas.")
-        print("Una vez que estés visualizando la tabla con los casos, presiona ENTER aquí en la consola...")
-        print("="*50 + "\n")
-        
-        # Pausa para que entres de forma segura con tu usuario y contraseña
-        input() 
-            
-        print("Iniciando la lectura masiva de casos desde la pantalla...")
-        
-        datos_consolidado = []
-        
-        try:
-            # Localizamos las filas de la tabla de incidentes en la vista actual
-            # (Ajusta el selector si la estructura HTML requiere mayor precisión)
-            filas = page.locator("table tr")
-            total_filas = filas.count()
-            print(f"Se detectaron {total_filas} filas en la vista actual.")
-            
-            for i in range(1, total_filas): # Empezamos en 1 para omitir los encabezados de la tabla
-                fila = filas.nth(i)
-                
-                try:
-                    # Extracción de las columnas principales de la tabla
-                    nro_incidente = fila.locator("td").nth(0).inner_text()
-                    tipo = fila.locator("td").nth(1).inner_text()
-                    subtipo = fila.locator("td").nth(2).inner_text()
-                    ubicacion = fila.locator("td").nth(3).inner_text()
-                    zona = fila.locator("td").nth(4).inner_text()
-                    creacion = fila.locator("td").nth(5).inner_text()
-                    operador = fila.locator("td").nth(6).inner_text()
-                    
-                    caso_info = {
-                        "Incidente": nro_incidente.strip(),
-                        "Tipo": tipo.strip(),
-                        "Subtipo": subtipo.strip(),
-                        "Ubicación": ubicacion.strip(),
-                        "Zona": zona.strip(),
-                        "Creación": creacion.strip(),
-                        "Operador": operador.strip()
-                    }
-                    
-                    datos_consolidado.append(caso_info)
-                    print(f"Procesado caso [{i}/{total_filas}]: {nro_incidente}")
-                    
-                except Exception as e:
-                    # Si alguna fila no cumple con la estructura exacta, la salta para continuar con las demás
-                    continue
+    if not archivos:
+        print(f"No se encontraron archivos PDF en la carpeta '{carpeta_entrada}'. ¡Añade algunos para comenzar!")
+        return
 
-        except Exception as e:
-            print(f"Ocurrió un error al leer la tabla de incidentes: {e}")
+    print(f"Se encontraron {len(archivos)} reportes PDF para procesar...")
+    lista_resultados = []
 
-        # 3. EXPORTAR A EXCEL MASIVO
-        if datos_consolidado:
-            df = pd.DataFrame(datos_consolidado)
-            nombre_archivo = "Estudio_Incidentes_S_Portal.xlsx"
-            df.to_excel(nombre_archivo, index=False)
-            print(f"\n¡Éxito total! Se han exportado {len(datos_consolidado)} casos al archivo: {nombre_archivo}")
-        else:
-            print("\nNo se recolectaron datos para exportar. Asegúrate de estar en la vista de la tabla antes de presionar ENTER.")
+    for archivo in archivos:
+        ruta_completa = os.path.join(carpeta_entrada, archivo)
+        info_caso = extraer_datos_pdf(ruta_completa)
+        if info_caso:
+            lista_resultados.append(info_caso)
 
-        browser.close()
+    if lista_resultados:
+        df = pd.DataFrame(lista_resultados)
+        df.to_excel(archivo_salida, index=False)
+        print(f"\n¡Proceso exitoso! Se han consolidado {len(lista_resultados)} casos en el archivo: '{archivo_salida}'")
+    else:
+        print("No se pudieron extraer datos de los archivos analizados.")
 
 if __name__ == "__main__":
-    # Ejecución de la función principal
-    extraer_incidentes_s_portal()
+    # Carpeta donde colocarás los PDFs descargados del sistema institucional
+    CARPETA_PDFS = "reportes_pdf"
+    ARCHIVO_EXCEL = "Estudio_Operativo_Incidentes.xlsx"
+    
+    procesar_carpeta_incidentes(CARPETA_PDFS, ARCHIVO_EXCEL)
