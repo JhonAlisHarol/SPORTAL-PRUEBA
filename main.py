@@ -9,6 +9,82 @@ import streamlit as st
 
 st.set_page_config(page_title="Centro de Procesamiento S.PORTAL", page_icon="📊", layout="wide")
 
+# =========================================================================
+# FUNCIÓN GLOBAL EN PARALELO (DEBE ESTAR AQUÍ ARRIBA PARA FUNCIONAR)
+# =========================================================================
+def worker_extraer_pdf(args):
+    ruta_pdf, nombre_original = args
+    try:
+        reader = PdfReader(ruta_pdf)
+        texto_completo = ""
+        for pagina in reader.pages[:3]:
+            t = pagina.extract_text()
+            if t: texto_completo += t + "\n"
+
+        datos = {
+            "Archivo": nombre_original or os.path.basename(ruta_pdf),
+            "Incidente": "", "Tipo": "", "Subtipo": "", "Ubicación": "N/A", "Zona": "N/A", "Operador": "N/A",
+            "Fecha Creación": "", "Hora Creación": "",
+            "Fecha 1": "", "Hora 1": "", "Reporte 1": "",
+            "Fecha 2": "", "Hora 2": "", "Reporte 2": "",
+            "Fecha 3": "", "Hora 3": "", "Reporte 3": "",
+            "Fecha 4": "", "Hora 4": "", "Reporte 4": ""
+        }
+
+        match_inc = re.search(r'(P\d{10,12})', texto_completo)
+        if match_inc:
+            datos["Incidente"] = match_inc.group(1)
+        else:
+            match_arch = re.search(r'(P\d{10,12})', datos["Archivo"])
+            if match_arch:
+                datos["Incidente"] = match_arch.group(1)
+
+        lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
+        ops = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE GIERHART", "JOAQUIN CHI", "DALILA TREJOS", "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"]
+
+        for linea in lineas:
+            linea_up = linea.upper()
+            for op in ops:
+                if op in linea_up:
+                    datos["Operador"] = op
+                    break
+            if (re.search(r'\b\d{0,2}[A-Z]{1,3}\b', linea) and len(linea) <= 6) and ("ZP" in linea_up or "ZF" in linea_up or "ZONA" in linea_up):
+                if datos["Zona"] == "N/A":
+                    datos["Zona"] = linea
+
+        if datos["Incidente"]:
+            for idx, l in enumerate(lineas):
+                if datos["Incidente"] in l:
+                    if idx + 1 < len(lineas): datos["Tipo"] = lineas[idx + 1]
+                    if idx + 2 < len(lineas): datos["Subtipo"] = lineas[idx + 2]
+                    break
+
+        match_coords = re.search(r'(COORDENADAS\s+XY\s*\([^)]+\))', texto_completo, re.IGNORECASE)
+        if match_coords:
+            datos["Ubicación"] = match_coords.group(1).replace("\n", " ")
+
+        patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
+        matches = list(re.finditer(patron_fh, texto_completo))
+        if matches:
+            datos["Fecha Creación"] = matches[0].group(1)
+            datos["Hora Creación"] = matches[0].group(2)
+
+        marcas_tiempo = [{"fecha": m.group(1), "hora": m.group(2), "pos": m.start()} for m in matches if not (m.group(1) == datos["Fecha Creación"] and m.group(2) == datos["Hora Creación"] and len(matches) == 1)]
+        
+        for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
+            datos[f"Fecha {idx_m}"] = marca["fecha"]
+            datos[f"Hora {idx_m}"] = marca["hora"]
+
+        if not datos["Incidente"]:
+            datos["Incidente"] = "S/N"
+
+        return datos
+    except Exception:
+        return None
+
+# =========================================================================
+# INTERFAZ PRINCIPAL STREAMLIT
+# =========================================================================
 st.title("📊 Sistema Integral de Procesamiento S.PORTAL (Alto Rendimiento)")
 st.write("Herramienta avanzada: Procesamiento masivo ultra rápido en paralelo para +30k expedientes.")
 
@@ -106,77 +182,6 @@ else:
     st.dataframe(pd.DataFrame(columns=columnas_base), use_container_width=True)
     st.markdown("---")
 
-    def worker_extraer_pdf(args):
-        """Función optimizada para procesar un PDF de forma independiente en paralelo."""
-        ruta_pdf, nombre_original = args
-        try:
-            reader = PdfReader(ruta_pdf)
-            texto_completo = ""
-            for pagina in reader.pages[:3]:
-                t = pagina.extract_text()
-                if t: texto_completo += t + "\n"
-
-            datos = {
-                "Archivo": nombre_original or os.path.basename(ruta_pdf),
-                "Incidente": "", "Tipo": "", "Subtipo": "", "Ubicación": "N/A", "Zona": "N/A", "Operador": "N/A",
-                "Fecha Creación": "", "Hora Creación": "",
-                "Fecha 1": "", "Hora 1": "", "Reporte 1": "",
-                "Fecha 2": "", "Hora 2": "", "Reporte 2": "",
-                "Fecha 3": "", "Hora 3": "", "Reporte 3": "",
-                "Fecha 4": "", "Hora 4": "", "Reporte 4": ""
-            }
-
-            match_inc = re.search(r'(P\d{10,12})', texto_completo)
-            if match_inc:
-                datos["Incidente"] = match_inc.group(1)
-            else:
-                match_arch = re.search(r'(P\d{10,12})', datos["Archivo"])
-                if match_arch:
-                    datos["Incidente"] = match_arch.group(1)
-
-            lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
-            ops = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE GIERHART", "JOAQUIN CHI", "DALILA TREJOS", "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"]
-
-            for linea in lineas:
-                linea_up = linea.upper()
-                for op in ops:
-                    if op in linea_up:
-                        datos["Operador"] = op
-                        break
-                if (re.search(r'\b\d{0,2}[A-Z]{1,3}\b', linea) and len(linea) <= 6) and ("ZP" in linea_up or "ZF" in linea_up or "ZONA" in linea_up):
-                    if datos["Zona"] == "N/A":
-                        datos["Zona"] = linea
-
-            if datos["Incidente"]:
-                for idx, l in enumerate(lineas):
-                    if datos["Incidente"] in l:
-                        if idx + 1 < len(lineas): datos["Tipo"] = lineas[idx + 1]
-                        if idx + 2 < len(lineas): datos["Subtipo"] = lineas[idx + 2]
-                        break
-
-            match_coords = re.search(r'(COORDENADAS\s+XY\s*\([^)]+\))', texto_completo, re.IGNORECASE)
-            if match_coords:
-                datos["Ubicación"] = match_coords.group(1).replace("\n", " ")
-
-            patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
-            matches = list(re.finditer(patron_fh, texto_completo))
-            if matches:
-                datos["Fecha Creación"] = matches[0].group(1)
-                datos["Hora Creación"] = matches[0].group(2)
-
-            marcas_tiempo = [{"fecha": m.group(1), "hora": m.group(2), "pos": m.start()} for m in matches if not (m.group(1) == datos["Fecha Creación"] and m.group(2) == datos["Hora Creación"] and len(matches) == 1)]
-            
-            for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
-                datos[f"Fecha {idx_m}"] = marca["fecha"]
-                datos[f"Hora {idx_m}"] = marca["hora"]
-
-            if not datos["Incidente"]:
-                datos["Incidente"] = "S/N"
-
-            return datos
-        except Exception:
-            return None
-
     archivo_zip = st.file_uploader(
         "Sube tu paquete comprimido (.zip) con los más de 30k PDFs:", 
         type=["zip"]
@@ -211,7 +216,6 @@ else:
                 if total_archivos > 0:
                     st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Iniciando procesamiento en paralelo...")
                     
-                    # Usar todos los núcleos disponibles del procesador para velocidad extrema
                     nucleos = max(1, cpu_count() - 1)
                     
                     with Pool(processes=nucleos) as pool:
