@@ -6,7 +6,6 @@ import pandas as pd
 from pypdf import PdfReader
 import streamlit as st
 
-# Configuración de la página de Streamlit
 st.set_page_config(page_title="Centro de Procesamiento S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Sistema Integral de Procesamiento S.PORTAL")
@@ -22,9 +21,6 @@ modo = st.sidebar.selectbox(
 
 st.markdown("---")
 
-# =========================================================================
-# MODULO 1: PROCESADOR DE LISTADOS CONSOLIDADOS (RESTAURADO COMPLETO)
-# =========================================================================
 if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
     st.header("📄 Extractor de Listados Consolidados Masivos")
     st.write("Sube tu archivo PDF consolidado mensual (ej. ENERO.pdf) para extraer automáticamente todos los incidentes en formato tabular.")
@@ -42,7 +38,6 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
             try:
                 reader = PdfReader(ruta_tmp)
                 total_paginas = len(reader.pages)
-                
                 lista_registros = []
                 barra = st.progress(0)
                 patron_fila = re.compile(r'(P\d{10,12})')
@@ -76,16 +71,10 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                                         crea_val += " " + lineas[k+1]
 
                             lista_registros.append({
-                                "Incidente": inc_id,
-                                "Tipo": tipo_val,
-                                "Subtipo": sub_val,
-                                "Ubicación": ubi_val,
-                                "Zona": zona_val,
-                                "Creación": crea_val,
-                                "Operador": op_val
+                                "Incidente": inc_id, "Tipo": tipo_val, "Subtipo": sub_val,
+                                "Ubicación": ubi_val, "Zona": zona_val, "Creación": crea_val, "Operador": op_val
                             })
                         i += 1
-
                     barra.progress((idx + 1) / total_paginas)
 
                 os.unlink(ruta_tmp)
@@ -99,38 +88,25 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                     df_cons.to_excel(nombre_out, index=False)
 
                     with open(nombre_out, "rb") as f:
-                        st.download_button(
-                            label="📥 Descargar Excel de Listado Consolidado",
-                            data=f,
-                            file_name=nombre_out,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
+                        st.download_button("📥 Descargar Excel de Listado Consolidado", data=f, file_name=nombre_out, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 else:
                     st.warning("No se detectaron códigos de incidente con el formato esperado en este PDF.")
-
             except Exception as e:
                 st.error(f"Ocurrió un error al procesar el archivo: {e}")
 
-# =========================================================================
-# MODULO 2: PROCESADOR MASIVO DE ALTO VOLUMEN (+30K PDFS)
-# =========================================================================
 else:
     st.subheader("📋 Vista Previa de la Tabla Maestra (Vacía)")
     
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
-        "Fecha Creación", "Hora Creación",
-        "Fecha 1", "Hora 1", "Reporte 1",
-        "Fecha 2", "Hora 2", "Reporte 2",
-        "Fecha 3", "Hora 3", "Reporte 3",
-        "Fecha 4", "Hora 4", "Reporte 4"
+        "Fecha Creación", "Hora Creación", "Fecha 1", "Hora 1", "Reporte 1",
+        "Fecha 2", "Hora 2", "Reporte 2", "Fecha 3", "Hora 3", "Reporte 3", "Fecha 4", "Hora 4", "Reporte 4"
     ]
-
-    df_vacio = pd.DataFrame(columns=columnas_base)
-    st.dataframe(df_vacio, use_container_width=True)
+    st.dataframe(pd.DataFrame(columns=columnas_base), use_container_width=True)
     st.markdown("---")
 
-    def extraer_datos_pdf_seguro(ruta_pdf, nombre_archivo_original=""):
+    def extraer_datos_pdf_blindado(ruta_pdf, nombre_archivo_original=""):
+        """Extracción blindada: si un PDF falla o da error, no tumba el proceso masivo."""
         try:
             reader = PdfReader(ruta_pdf)
             texto_completo = ""
@@ -192,7 +168,7 @@ else:
 
             return datos
         except Exception:
-            return None
+            return None # Si un archivo individual falla, devuelve vacío limpiamente sin frenar los demás
 
     archivo_zip = st.file_uploader(
         "Sube tu paquete comprimido (.zip) con los más de 30k PDFs (Soporta archivos grandes de varios GBs):", 
@@ -235,8 +211,8 @@ else:
                     
                     for i, ruta_pdf in enumerate(archivos_pdf):
                         nombre_original = os.path.basename(ruta_pdf)
-                        info_caso = extraer_datos_pdf_seguro(ruta_pdf, nombre_original)
-                        if info_caso:
+                        info_caso = extraer_datos_pdf_blindado(ruta_pdf, nombre_original)
+                        if info_caso and info_caso["Incidente"]:
                             lista_resultados.append(info_caso)
 
                         if i % 100 == 0 or i == total_archivos - 1:
@@ -246,7 +222,7 @@ else:
 
                     if lista_resultados:
                         df_resultado = pd.DataFrame(lista_resultados)
-                        st.success(f"¡Procesamiento masivo completado con éxito! Total de registros: {len(df_resultado):,}")
+                        st.success(f"¡Procesamiento masivo completado con éxito! Total de registros válidos extraídos: {len(df_resultado):,}")
                         st.dataframe(df_resultado.head(50), use_container_width=True)
 
                         df_resultado.to_excel(nombre_excel, index=False)
@@ -258,7 +234,7 @@ else:
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
                     else:
-                        st.error("No se pudo extraer información de los PDFs.")
+                        st.error("No se pudo extraer información estructurada de los PDFs. Revisa que los archivos contengan texto seleccionable.")
                 else:
                     st.warning("No se encontró ningún archivo PDF dentro del archivo ZIP.")
     else:
