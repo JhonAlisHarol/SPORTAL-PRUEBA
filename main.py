@@ -9,10 +9,10 @@ import streamlit as st
 st.set_page_config(page_title="Procesador Masivo de Incidentes S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Procesador Masivo de Reportes S.PORTAL")
-st.write("Extracción de datos: Fechas y Horas separadas + Captura directa de los Reportes de la Bitácora.")
+st.write("Estructuración avanzada: Separación exacta de Fechas, Horas y asociación directa de cada Comentario en su respectivo Reporte (1 al 4).")
 
 def extraer_datos_pdf(ruta_pdf):
-    """Extrae datos de cabecera, separa fechas/horas y captura con precisión los 4 reportes de la bitácora."""
+    """Extrae cabecera, separa fechas/horas y asocia cada comentario de la bitácora a su respectivo reporte."""
     try:
         reader = PdfReader(ruta_pdf)
         texto_completo = ""
@@ -21,7 +21,7 @@ def extraer_datos_pdf(ruta_pdf):
             if texto_extraido:
                 texto_completo += texto_extraido + "\n"
 
-        # Diccionario base
+        # Diccionario base con la estructura exacta
         datos = {
             "Archivo": os.path.basename(ruta_pdf),
             "Incidente": "",
@@ -74,48 +74,47 @@ def extraer_datos_pdf(ruta_pdf):
             datos["Tipo"] = "Alteracion de la Convivencia Pacifica"
             datos["Subtipo"] = "Riña y Escándalo"
 
-        # 2. Extracción de Fechas y Horas (1 a 4)
+        # 2. Extracción de todas las ocurrencias de Fecha y Hora en el texto
         patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
-        coincidencias = list(re.finditer(patron_fh, texto_completo))
+        matches = list(re.finditer(patron_fh, texto_completo))
 
-        fechas_horas_lista = []
-        for m in coincidencias:
+        # Almacenamos las marcas de tiempo encontradas con sus posiciones de caracteres
+        marcas_tiempo = []
+        for m in matches:
             f_val = m.group(1)
             h_val = m.group(2)
-            combinado = (f_val, h_val)
-            if combinado not in fechas_horas_lista:
-                fechas_horas_lista.append(combinado)
+            pos = m.start()
+            # Evitamos duplicar la primera si es exactamente la fecha/hora de creación inicial
+            if not (f_val == datos["Fecha Creación"] and h_val == datos["Hora Creación"] and len(marcas_tiempo) == 0):
+                marcas_tiempo.append({"fecha": f_val, "hora": h_val, "pos": pos})
 
-        idx_inicio = 1 if len(fechas_horas_lista) > 1 and fechas_horas_lista[0][1] == datos["Hora Creación"] else 0
-        
-        slot = 1
-        for j in range(idx_inicio, len(fechas_horas_lista)):
-            if slot <= 4:
-                f_item, h_item = fechas_horas_lista[j]
-                datos[f"Fecha {slot}"] = f_item
-                datos[f"Hora {slot}"] = h_item
-                slot += 1
+        # Asignamos hasta 4 marcas de tiempo secuenciales (Fecha y Hora 1 a 4)
+        for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
+            datos[f"Fecha {idx_m}"] = marca["fecha"]
+            datos[f"Hora {idx_m}"] = marca["hora"]
 
-        # 3. Captura directa y robusta de los Reportes de la Bitácora
-        # Buscamos todo el texto que se encuentra desde "Bitacora Incidente" en adelante
-        texto_lower = texto_completo.lower()
-        pos_bitacora = texto_lower.find("bitacora incidente")
-        
-        if pos_bitacora != -1:
-            texto_bitacora_crudo = texto_completo[pos_bitacora:]
-            # Limpiamos textos innecesarios del pie de página si los hay
-            texto_bitacora_crudo = texto_bitacora_crudo.replace("SISTEMA NACIONAL DE EMERGENCIAS", "").replace("Fecha de emisión:", "")
+        # 3. Asociación precisa de los comentarios (Reportes 1 a 4) basados en las posiciones del texto
+        for idx_m in range(len(marcas_tiempo)):
+            num_rep = idx_m + 1
+            if num_rep > 4:
+                break
             
-            # Dividimos el bloque en párrafos o líneas de comentarios útiles
-            lineas_bitacora = [l.strip() for l in texto_bitacora_crudo.split('\n') if len(l.strip()) > 10]
+            inicio_texto = marcas_tiempo[idx_m]["pos"] + len(f"{marcas_tiempo[idx_m]['fecha']} {marcas_tiempo[idx_m]['hora']}")
             
-            # Asignamos de forma directa los textos encontrados a los 4 reportes
-            for idx_rep in range(1, 5):
-                if idx_rep - 1 < len(lineas_bitacora):
-                    datos[f"Reporte {idx_rep}"] = lineas_bitacora[idx_rep - 1]
-        else:
-            # Fallback por si la etiqueta varía
-            datos["Reporte 1"] = "Ver detalle en el reporte original PDF"
+            # El fin del comentario es donde empieza la siguiente marca de tiempo, o el final del documento
+            if idx_m + 1 < len(marcas_tiempo):
+                fin_texto = marcas_tiempo[idx_m + 1]["pos"]
+            else:
+                fin_texto = len(texto_completo)
+
+            # Extraemos el fragmento de texto entre esta marca y la siguiente
+            fragmento = texto_completo[inicio_texto:fin_texto]
+            
+            # Limpiamos etiquetas de usuarios repetidas y saltos de línea excesivos
+            fragmento_limpio = fragmento.replace("ENRIQUE CACERES", "").replace("VALERY VELASQUEZ", "").replace("Comentario Del Usuario", "").replace("\n", " ").strip()
+            
+            # Guardamos el comentario en su respectivo reporte
+            datos[f"Reporte {num_rep}"] = fragmento_limpio
 
         return datos
 
@@ -130,7 +129,7 @@ archivos_subidos = st.file_uploader(
 )
 
 if archivos_subidos:
-    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Procesando horas y reportes...")
+    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Procesando horas y asociando reportes...")
     
     lista_resultados = []
     barra_progreso = st.progress(0)
@@ -153,11 +152,10 @@ if archivos_subidos:
         
         st.success("¡Estructuración completada con éxito!")
         
-        script_summary = "Vista previa del Excel con Horas y Reportes:"
-        st.subheader(script_summary)
+        st.subheader("Vista previa del Excel con Fechas, Horas y Reportes Asociados:")
         st.dataframe(df_resultado)
 
-        nombre_excel = "Estudio_Operativo_Final.xlsx"
+        nombre_excel = "Estudio_Operativo_Final_Preciso.xlsx"
         df_resultado.to_excel(nombre_excel, index=False)
 
         with open(nombre_excel, "rb") as f:
