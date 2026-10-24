@@ -9,10 +9,10 @@ import streamlit as st
 st.set_page_config(page_title="Procesador Masivo de Incidentes S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Procesador Masivo de Reportes S.PORTAL")
-st.write("Extracción estructurada: Fechas y Horas separadas, Cabecera y Reportes detallados de la bitácora.")
+st.write("Extracción de datos: Fechas y Horas separadas + Captura directa de los Reportes de la Bitácora.")
 
 def extraer_datos_pdf(ruta_pdf):
-    """Extrae, separa fechas/horas y captura con precisión los reportes y la cabecera del PDF."""
+    """Extrae datos de cabecera, separa fechas/horas y captura con precisión los 4 reportes de la bitácora."""
     try:
         reader = PdfReader(ruta_pdf)
         texto_completo = ""
@@ -21,7 +21,7 @@ def extraer_datos_pdf(ruta_pdf):
             if texto_extraido:
                 texto_completo += texto_extraido + "\n"
 
-        # Diccionario base con columnas separadas para fechas y horas
+        # Diccionario base
         datos = {
             "Archivo": os.path.basename(ruta_pdf),
             "Incidente": "",
@@ -38,12 +38,11 @@ def extraer_datos_pdf(ruta_pdf):
             "Fecha 4": "", "Hora 4": "", "Reporte 4": ""
         }
 
-        # 1. Extracción de la Cabecera
+        # 1. Cabecera general
         match_incidente = re.search(r'(P\d{10,12})', texto_completo)
         if match_incidente:
             datos["Incidente"] = match_incidente.group(1)
 
-        # Fecha y Hora de Creación separadas
         match_creacion = re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})', texto_completo)
         if match_creacion:
             datos["Fecha Creación"] = match_creacion.group(1)
@@ -52,19 +51,16 @@ def extraer_datos_pdf(ruta_pdf):
         lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
         for i, linea in enumerate(lineas):
-            # Zona (ej: 12ZP)
             if re.search(r'\b\d{1,2}[A-Z]{1,3}\b', linea) and len(linea) <= 6 and not datos["Zona"]:
                 if "ZP" in linea or "ZF" in linea:
                     datos["Zona"] = linea
 
-            # Ubicación / Coordenadas
             if "COORDENADAS" in linea.upper() or "UBICACION" in linea.upper():
                 ubi = linea
                 if i + 1 < len(lineas) and "(" in lineas[i+1]:
                     ubi += " " + lineas[i+1]
                 datos["Ubicación"] = ubi
 
-        # Tipo y Subtipo por defecto basados en el estándar del sistema
         if len(lineas) > 5:
             for idx, l in enumerate(lineas[:15]):
                 if datos["Incidente"] in l:
@@ -78,8 +74,7 @@ def extraer_datos_pdf(ruta_pdf):
             datos["Tipo"] = "Alteracion de la Convivencia Pacifica"
             datos["Subtipo"] = "Riña y Escándalo"
 
-        # 2. Extracción de Fechas, Horas y Reportes secuenciales de la Bitácora
-        # Buscamos coincidencias de Fecha y Hora en el texto
+        # 2. Extracción de Fechas y Horas (1 a 4)
         patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
         coincidencias = list(re.finditer(patron_fh, texto_completo))
 
@@ -88,12 +83,9 @@ def extraer_datos_pdf(ruta_pdf):
             f_val = m.group(1)
             h_val = m.group(2)
             combinado = (f_val, h_val)
-            # Evitamos duplicar la fecha/hora inicial exacta de creación si se repite al inicio
             if combinado not in fechas_horas_lista:
                 fechas_horas_lista.append(combinado)
 
-        # Asignamos hasta 4 marcas de tiempo separadas (Fecha y Hora 1 al 4)
-        # Omitimos la primera si corresponde a la creación general
         idx_inicio = 1 if len(fechas_horas_lista) > 1 and fechas_horas_lista[0][1] == datos["Hora Creación"] else 0
         
         slot = 1
@@ -104,39 +96,26 @@ def extraer_datos_pdf(ruta_pdf):
                 datos[f"Hora {slot}"] = h_item
                 slot += 1
 
-        # 3. Captura precisa de los comentarios / reportes de la bitácora
-        # Extraemos las líneas ubicadas específicamente tras la sección "Bitacora Incidente"
-        capturando = False
-        textos_bitacora = []
-
-        for linea in lineas:
-            if "Bitacora Incidente" in linea:
-                capturando = True
-                continue
-            if capturando:
-                if "SISTEMA NACIONAL DE EMERGENCIAS" in linea or "Fecha de emisión" in linea:
-                    continue
-                # Filtramos líneas que son solo marcas de fecha/hora para quedarnos con los comentarios limpios
-                if not re.match(r'^\d{2}/\d{2}/\d{4}$', linea) and not re.match(r'^\d{1,2}:\d{2}:\d{2}$', linea):
-                    textos_bitacora.append(linea)
-
-        # Unimos y seccionamos los textos capturados en 4 reportes lógicos
-        texto_unido_bitacora = " ".join(textos_bitacora)
+        # 3. Captura directa y robusta de los Reportes de la Bitácora
+        # Buscamos todo el texto que se encuentra desde "Bitacora Incidente" en adelante
+        texto_lower = texto_completo.lower()
+        pos_bitacora = texto_lower.find("bitacora incidente")
         
-        # Limpiamos palabras repetidas de usuarios del sistema si aparecen
-        texto_limpio = texto_unido_bitacora.replace("ENRIQUE CACERES", "").replace("VALERY VELASQUEZ", "").replace("Comentario Del Usuario", "").strip()
-
-        # Dividimos el texto limpio en fragmentos para los 4 reportes
-        if texto_limpio:
-            palabras = texto_limpio.split()
-            tamano_bloque = max(1, len(palabras) // 4)
+        if pos_bitacora != -1:
+            texto_bitacora_crudo = texto_completo[pos_bitacora:]
+            # Limpiamos textos innecesarios del pie de página si los hay
+            texto_bitacora_crudo = texto_bitacora_crudo.replace("SISTEMA NACIONAL DE EMERGENCIAS", "").replace("Fecha de emisión:", "")
             
-            for r_idx in range(1, 5):
-                inicio = (r_idx - 1) * tamano_bloque
-                fin = r_idx * tamano_bloque if r_idx < 4 else len(palabras)
-                segmento = " ".join(palabras[inicio:fin])
-                if segmento.strip():
-                    datos[f"Reporte {r_idx}"] = segmento
+            # Dividimos el bloque en párrafos o líneas de comentarios útiles
+            lineas_bitacora = [l.strip() for l in texto_bitacora_crudo.split('\n') if len(l.strip()) > 10]
+            
+            # Asignamos de forma directa los textos encontrados a los 4 reportes
+            for idx_rep in range(1, 5):
+                if idx_rep - 1 < len(lineas_bitacora):
+                    datos[f"Reporte {idx_rep}"] = lineas_bitacora[idx_rep - 1]
+        else:
+            # Fallback por si la etiqueta varía
+            datos["Reporte 1"] = "Ver detalle en el reporte original PDF"
 
         return datos
 
@@ -151,7 +130,7 @@ archivos_subidos = st.file_uploader(
 )
 
 if archivos_subidos:
-    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Procesando y separando fechas/horas...")
+    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Procesando horas y reportes...")
     
     lista_resultados = []
     barra_progreso = st.progress(0)
@@ -174,10 +153,11 @@ if archivos_subidos:
         
         st.success("¡Estructuración completada con éxito!")
         
-        st.subheader("Vista previa del Excel ordenado:")
+        script_summary = "Vista previa del Excel con Horas y Reportes:"
+        st.subheader(script_summary)
         st.dataframe(df_resultado)
 
-        nombre_excel = "Estudio_Operativo_Fechas_Horas_Separadas.xlsx"
+        nombre_excel = "Estudio_Operativo_Final.xlsx"
         df_resultado.to_excel(nombre_excel, index=False)
 
         with open(nombre_excel, "rb") as f:
