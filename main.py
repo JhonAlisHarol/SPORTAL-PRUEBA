@@ -6,13 +6,13 @@ from pypdf import PdfReader
 import streamlit as st
 
 # Configuración de la página de Streamlit
-st.set_page_config(page_title="Procesador Masivo de Incidentes S.PORTAL", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Procesador Masivo de Listados S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Procesador Masivo de Reportes S.PORTAL")
-st.write("Estructuración completa: Captura exacta del Operador, Fechas/Horas separadas y Reportes asociados (1 al 4).")
+st.write("Sube el PDF de listado general (con cientos de casos) para extraer y consolidar automáticamente todos los incidentes en un Excel estructurado.")
 
-def extraer_datos_pdf(ruta_pdf):
-    """Extrae la cabecera completa, captura el operador por posición, separa fechas/horas y asocia cada reporte."""
+def procesar_pdf_listado(ruta_pdf):
+    """Procesa un PDF masivo de listado general y extrae fila por fila todos los incidentes."""
     try:
         reader = PdfReader(ruta_pdf)
         texto_completo = ""
@@ -21,158 +21,137 @@ def extraer_datos_pdf(ruta_pdf):
             if texto_extraido:
                 texto_completo += texto_extraido + "\n"
 
-        # Diccionario base
-        datos = {
-            "Archivo": os.path.basename(ruta_pdf),
-            "Incidente": "",
-            "Tipo": "",
-            "Subtipo": "",
-            "Ubicación": "",
-            "Zona": "",
-            "Operador": "",
-            "Fecha Creación": "",
-            "Hora Creación": "",
-            "Fecha 1": "", "Hora 1": "", "Reporte 1": "",
-            "Fecha 2": "", "Hora 2": "", "Reporte 2": "",
-            "Fecha 3": "", "Hora 3": "", "Reporte 3": "",
-            "Fecha 4": "", "Hora 4": "", "Reporte 4": ""
-        }
-
-        # 1. Incidente y Fecha/Hora de Creación[cite: 9]
-        match_incidente = re.search(r'(P\d{10,12})', texto_completo)
-        if match_incidente:
-            datos["Incidente"] = match_incidente.group(1)
-
-        match_creacion = re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})', texto_completo)
-        if match_creacion:
-            datos["Fecha Creación"] = match_creacion.group(1)
-            datos["Hora Creación"] = match_creacion.group(2)
-
+        # Dividir todo el texto en líneas limpias
         lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-        for i, linea in enumerate(lineas):
-            # Captura de Zona (ej: 12ZP)[cite: 1, 9]
-            if re.search(r'\b\d{1,2}[A-Z]{1,3}\b', linea) and len(linea) <= 6 and not datos["Zona"]:
-                if "ZP" in linea or "ZF" in linea:
-                    datos["Zona"] = linea
-
-            # Captura de Ubicación / Coordenadas[cite: 1, 9]
-            if "COORDENADAS" in linea.upper() or "UBICACION" in linea.upper():
-                ubi = linea
-                if i + 1 < len(lineas) and "(" in lineas[i+1]:
-                    ubi += " " + lineas[i+1]
-                datos["Ubicación"] = ubi
-
-        # Tipo y Subtipo[cite: 1, 9]
-        if len(lineas) > 5:
-            for idx, l in enumerate(lineas[:15]):
-                if datos["Incidente"] in l:
-                    if idx + 1 < len(lineas):
-                        datos["Tipo"] = lineas[idx + 1]
-                    if idx + 2 < len(lineas):
-                        datos["Subtipo"] = lineas[idx + 2]
-                    break
-
-        if not datos["Tipo"]:
-            datos["Tipo"] = "Alteracion de la Convivencia Pacifica"
-            datos["Subtipo"] = "Riña y Escándalo"
-
-        # Captura precisa del Operador por posición (Texto ubicado entre la zona y la fecha de creación)[cite: 9]
-        match_operador = re.search(r'(?:12ZP|12ZF|\d{1,2}[A-Z]{1,3})\s+([A-ZÁÉÍÓÚÑ]+\s+[A-ZÁÉÍÓÚÑ]+)\s+\d{2}/\d{2}/\d{4}', texto_completo)
-        if match_operador:
-            datos["Operador"] = match_operador.group(1).strip()
-        else:
-            # Respaldo por búsqueda directa de nombres frecuentes en el sistema
-            posibles_nombres = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE CIERHART", "JOAQUIN CHI", "DALLA TREJOS", "RICARDO EMILIO", "HERMOGENES SANJUR", "ARMANDO GONZALEZ"]
-            for nom in posibles_nombres:
-                if nom in texto_completo.upper():
-                    datos["Operador"] = nom
-                    break
-
-        # 2. Extracción de Fechas y Horas por posición (1 a 4)
-        patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
-        matches = list(re.finditer(patron_fh, texto_completo))
-
-        marcas_tiempo = []
-        for m in matches:
-            f_val = m.group(1)
-            h_val = m.group(2)
-            pos = m.start()
-            if not (f_val == datos["Fecha Creación"] and h_val == datos["Hora Creación"] and len(marcas_tiempo) == 0):
-                marcas_tiempo.append({"fecha": f_val, "hora": h_val, "pos": pos})
-
-        for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
-            datos[f"Fecha {idx_m}"] = marca["fecha"]
-            datos[f"Hora {idx_m}"] = marca["hora"]
-
-        # 3. Asociación precisa de los Reportes (1 a 4)
-        for idx_m in range(len(marcas_tiempo)):
-            num_rep = idx_m + 1
-            if num_rep > 4:
-                break
+        casos_extraidos = []
+        
+        # Recorremos el texto buscando patrones de números de incidente (Ej: P20260238869)
+        # y capturando la información circundante en el listado tabular
+        i = 0
+        while i < len(lineas):
+            linea = lineas[i]
             
-            inicio_texto = marcas_tiempo[idx_m]["pos"] + len(f"{marcas_tiempo[idx_m]['fecha']} {marcas_tiempo[idx_m]['hora']}")
-            
-            if idx_m + 1 < len(marcas_tiempo):
-                fin_texto = marcas_tiempo[idx_m + 1]["pos"]
-            else:
-                fin_texto = len(texto_completo)
+            # Detectar código de incidente
+            match_inc = re.search(r'(P\d{10,12})', linea)
+            if match_inc;
+            if match_inc:
+                incidente_id = match_inc.group(1)
+                
+                # Valores por defecto para la fila
+                tipo = "N/A"
+                subtipo = "N/A"
+                zona = "N/A"
+                fecha_creacion = ""
+                hora_creacion = ""
+                operador = "N/A"
+                
+                # Buscamos en las líneas siguientes inmediatas los datos de la fila del reporte tabular
+                contexto_bloque = " ".join(lineas[i:i+10])
+                
+                # Extraer Fecha y Hora de Creación (dd/mm/yyyy hh:mm:ss o similar)
+                match_fh = re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})', contexto_bloque)
+                if match_fh:
+                    fecha_creacion = match_fh.group(1)
+                    hora_creacion = match_fh.group(2)
+                
+                # Extraer Zona (Patrones como 12ZP, 8ZP, TRAN, etc.)
+                match_zn = re.search(r'\b(\d{1,2}[A-Z]{1,3}|TRAN)\b', contexto_bloque)
+                if match_zn:
+                    zona = match_zn.group(1)
 
-            fragmento = texto_completo[inicio_texto:fin_texto]
-            fragmento_limpio = fragmento.replace("ENRIQUE CACERES", "").replace("VALERY VELASQUEZ", "").replace("Comentario Del Usuario", "").replace("\n", " ").strip()
-            
-            datos[f"Reporte {num_rep}"] = fragmento_limpio
+                # Extraer Operador por nombres frecuentes en el sistema
+                posibles_nombres = [
+                    "ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE GIERHART", 
+                    "JOAQUIN CHI", "DALILA TREJOS", "RICARDO EMILIO MAYORGA LORENZO", "HERMOGENES SANJUR", 
+                    "ANTONIO PATRICIO", "ARMANDO GONZALEZ", "ESTEBAN E. HERNANDEZ H.", "YARIBETH M. ESCUDERO H.",
+                    "MARIA ISABEL MADRID CASTILLO", "DORIAN GREAVES", "ANGELICA RODRIGUEZ", "ERICK ROSALES SANCHEZ JIRON",
+                    "LEOPOLDO SERRANO BROWN", "JERRY JORDAN", "PABLO GONZALEZ", "ANGEL JORDAN"
+                ]
+                for nom in posibles_nombres:
+                    if nom in contexto_bloque.upper():
+                        operador = nom
+                        break
 
-        return datos
+                # Capturar Tipo y Subtipo basado en palabras clave comunes del S.PORTAL
+                if "Alteracion de la Convivencia" in contexto_bloque or "Riña" in contexto_bloque:
+                    tipo = "Alteracion de la Convivencia Pacifica"
+                    subtipo = "Riña y Escándalo" if "Riña" in contexto_bloque else "Alteración del Orden Publico"
+                elif "Tránsito" in contexto_bloque or "Colisión" in contexto_bloque:
+                    tipo = "Tránsito"
+                    subtipo = "Colisión" if "Colisión" in contexto_bloque else "Infracción"
+                elif "Arma de Fuego" in contexto_bloque:
+                    tipo = "Arma de Fuego"
+                    subtipo = "Posesión Ilegal / Detonaciones"
+                elif "Violencia de Genero" in contexto_bloque or "Violencia Doméstica" in contexto_bloque:
+                    tipo = "Violencia de Genero"
+                    subtipo = "Violencia Doméstica"
+                elif "Actitud Sospechosa" in contexto_bloque:
+                    tipo = "Actitud Sospechosa"
+                    subtipo = "N/A"
+                elif "Hurto" in contexto_bloque:
+                    tipo = "Hurto"
+                    subtipo = "A Propiedad / Con Destreza"
+                elif "Pánico" in contexto_bloque:
+                    tipo = "Pánico"
+                    subtipo = "N/A"
+                else:
+                    tipo = "Incidente General S.PORTAL"
+                    subtipo = "N/A"
+
+                # Guardamos el caso estructurado
+                casos_extraidos.append({
+                    "Incidente": incidente_id,
+                    "Tipo": tipo,
+                    "Subtipo": subtipo,
+                    "Zona": zona,
+                    "Fecha Creación": fecha_creacion,
+                    "Hora Creación": hora_creacion,
+                    "Operador": operador
+                })
+            i += 1
+
+        return casos_extraidos
 
     except Exception as e:
-        return None
+        return []
 
 # Interfaz de carga de archivos en Streamlit
 archivos_subidos = st.file_uploader(
-    "Sube tus archivos PDF de incidentes aquí (Puedes seleccionar varios a la vez):", 
+    "Sube el PDF de listado general de S.PORTAL (ej. el reporte consolidado de 21 páginas):", 
     type=["pdf"], 
-    accept_multiple_files=True
+    accept_multiple_files=False
 )
 
 if archivos_subidos:
-    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Procesando cabecera, operador, horas y reportes...")
+    st.info("Procesando el listado general y extrayendo todos los incidentes...")
     
-    lista_resultados = []
-    barra_progreso = st.progress(0)
-    total_archivos = len(archivos_subidos)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(archivos_subidos.getbuffer())
+        ruta_temporal = tmp.name
 
-    for i, archivo in enumerate(archivos_subidos):
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(archivo.getbuffer())
-            ruta_temporal = tmp.name
-
-        info_caso = extraer_datos_pdf(ruta_temporal)
-        if info_caso:
-            lista_resultados.append(info_caso)
-
-        os.unlink(ruta_temporal)
-        barra_progreso.progress((i + 1) / total_archivos)
+    lista_resultados = procesar_pdf_listado(ruta_temporal)
+    os.unlink(ruta_temporal)
 
     if lista_resultados:
         df_resultado = pd.DataFrame(lista_resultados)
         
-        st.success("¡Estructuración completada con éxito!")
+        st.success(f"¡Procesamiento masivo exitoso! Se han extraído {len(df_resultado)} casos del PDF.")
         
-        st.subheader("Vista previa del Excel ordenado:")
+        st.subheader("Vista previa de los casos consolidados:")
         st.dataframe(df_resultado)
 
-        nombre_excel = "Estudio_Operativo_Completo.xlsx"
+        nombre_excel = "Estudio_Operativo_Listado_Maestro.xlsx"
         df_resultado.to_excel(nombre_excel, index=False)
 
         with open(nombre_excel, "rb") as f:
             st.download_button(
-                label="📥 Descargar Archivo Excel Estructurado",
+                label="📥 Descargar Archivo Excel Maestro Consolidado",
                 data=f,
                 file_name=nombre_excel,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
     else:
-        st.error("No se pudieron extraer datos de los archivos subidos.")
+        st.error("No se pudieron extraer incidentes del PDF. Asegúrate de subir el reporte de listado general correcto.")
 else:
-    st.warning("Por favor, sube al menos un archivo PDF para comenzar.")
+    st.warning("Por favor, sube el PDF de listado general de S.PORTAL para comenzar.")
