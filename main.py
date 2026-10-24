@@ -11,6 +11,22 @@ st.set_page_config(page_title="Procesador Masivo de Incidentes S.PORTAL", page_i
 st.title("📊 Procesador Masivo de Reportes S.PORTAL")
 st.write("Estructuración avanzada: Separación exacta de Fechas, Horas y asociación directa de cada Comentario en su respectivo Reporte (1 al 4).")
 
+# 1. Definir la estructura base de la tabla vacía con todas las columnas requeridas
+columnas_base = [
+    "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
+    "Fecha Creación", "Hora Creación",
+    "Fecha 1", "Hora 1", "Reporte 1",
+    "Fecha 2", "Hora 2", "Reporte 2",
+    "Fecha 3", "Hora 3", "Reporte 3",
+    "Fecha 4", "Hora 4", "Reporte 4"
+]
+
+# Mostrar siempre la tabla vacía al inicio para que el usuario visualice el cuadro
+st.subheader("📋 Vista Previa de la Tabla Maestra (Vacía)")
+df_vacio = pd.DataFrame(columns=columnas_base)
+st.dataframe(df_vacio, use_container_width=True)
+st.markdown("---")
+
 def extraer_datos_pdf(ruta_pdf):
     """Extrae cabecera, separa fechas/horas y asocia cada comentario de la bitácora a su respectivo reporte."""
     try:
@@ -78,22 +94,19 @@ def extraer_datos_pdf(ruta_pdf):
         patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
         matches = list(re.finditer(patron_fh, texto_completo))
 
-        # Almacenamos las marcas de tiempo encontradas con sus posiciones de caracteres
         marcas_tiempo = []
         for m in matches:
             f_val = m.group(1)
             h_val = m.group(2)
             pos = m.start()
-            # Evitamos duplicar la primera si es exactamente la fecha/hora de creación inicial
             if not (f_val == datos["Fecha Creación"] and h_val == datos["Hora Creación"] and len(marcas_tiempo) == 0):
                 marcas_tiempo.append({"fecha": f_val, "hora": h_val, "pos": pos})
 
-        # Asignamos hasta 4 marcas de tiempo secuenciales (Fecha y Hora 1 a 4)
         for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
             datos[f"Fecha {idx_m}"] = marca["fecha"]
             datos[f"Hora {idx_m}"] = marca["hora"]
 
-        # 3. Asociación precisa de los comentarios (Reportes 1 a 4) basados en las posiciones del texto
+        # 3. Asociación precisa de los comentarios (Reportes 1 a 4)
         for idx_m in range(len(marcas_tiempo)):
             num_rep = idx_m + 1
             if num_rep > 4:
@@ -101,19 +114,14 @@ def extraer_datos_pdf(ruta_pdf):
             
             inicio_texto = marcas_tiempo[idx_m]["pos"] + len(f"{marcas_tiempo[idx_m]['fecha']} {marcas_tiempo[idx_m]['hora']}")
             
-            # El fin del comentario es donde empieza la siguiente marca de tiempo, o el final del documento
             if idx_m + 1 < len(marcas_tiempo):
                 fin_texto = marcas_tiempo[idx_m + 1]["pos"]
             else:
                 fin_texto = len(texto_completo)
 
-            # Extraemos el fragmento de texto entre esta marca y la siguiente
             fragmento = texto_completo[inicio_texto:fin_texto]
-            
-            # Limpiamos etiquetas de usuarios repetidas y saltos de línea excesivos
             fragmento_limpio = fragmento.replace("ENRIQUE CACERES", "").replace("VALERY VELASQUEZ", "").replace("Comentario Del Usuario", "").replace("\n", " ").strip()
             
-            # Guardamos el comentario en su respectivo reporte
             datos[f"Reporte {num_rep}"] = fragmento_limpio
 
         return datos
@@ -121,51 +129,63 @@ def extraer_datos_pdf(ruta_pdf):
     except Exception as e:
         return None
 
-# Interfaz de carga de archivos en Streamlit
-archivos_subidos = st.file_uploader(
-    "Sube tus archivos PDF de incidentes aquí (Puedes seleccionar varios a la vez):", 
-    type=["pdf"], 
-    accept_multiple_files=True
-)
+# Selección del método de entrada: Archivos directos o Ruta de Carpeta Local
+metodo_carga = st.radio("Selecciona el método para ingresar tus PDFs:", ["Subir Archivos Directamente", "Procesar desde una Carpeta Local"])
 
-if archivos_subidos:
-    st.info(f"Se han cargado {len(archivos_subidos)} archivos. Procesando horas y asociando reportes...")
-    
-    lista_resultados = []
-    barra_progreso = st.progress(0)
-    total_archivos = len(archivos_subidos)
+rutas_pdfs = []
 
-    for i, archivo in enumerate(archivos_subidos):
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+if metodo_carga == "Subir Archivos Directamente":
+    archivos_subidos = st.file_uploader(
+        "Sube tus archivos PDF de incidentes aquí (Puedes seleccionar varios a la vez):", 
+        type=["pdf"], 
+        accept_multiple_files=True
+    )
+    if archivos_subidos:
+        for archivo in archivos_subidos:
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
             tmp.write(archivo.getbuffer())
-            ruta_temporal = tmp.name
+            rutas_pdfs.append(tmp.name)
 
-        info_caso = extraer_datos_pdf(ruta_temporal)
-        if info_caso:
-            lista_resultados.append(info_caso)
-
-        os.unlink(ruta_temporal)
-        barra_progreso.progress((i + 1) / total_archivos)
-
-    if lista_resultados:
-        df_resultado = pd.DataFrame(lista_resultados)
-        
-        st.success("¡Estructuración completada con éxito!")
-        
-        st.subheader("Vista previa del Excel con Fechas, Horas y Reportes Asociados:")
-        st.dataframe(df_resultado)
-
-        nombre_excel = "Estudio_Operativo_Final_Preciso.xlsx"
-        df_resultado.to_excel(nombre_excel, index=False)
-
-        with open(nombre_excel, "rb") as f:
-            st.download_button(
-                label="📥 Descargar Archivo Excel Estructurado",
-                data=f,
-                file_name=nombre_excel,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-    else:
-        st.error("No se pudieron extraer datos de los archivos subidos.")
 else:
-    st.warning("Por favor, sube al menos un archivo PDF para comenzar.")
+    ruta_carpeta = st.text_input("Ingresa la ruta completa de la carpeta en tu equipo (ej. C:\\Users\\hcedeño\\Desktop\\Reportes_S_Portal_PDF):")
+    if ruta_carpeta and os.path.exists(ruta_carpeta):
+        archivos_en_carpeta = [os.path.join(ruta_carpeta, f) for f in os.listdir(ruta_carpeta) if f.lower().endswith('.pdf')]
+        st.success(f"Se encontraron {len(archivos_en_carpeta)} archivos PDF en la carpeta especificada.")
+        rutas_pdfs = archivos_en_carpeta
+    elif ruta_carpeta:
+        st.error("La ruta ingresada no existe o no es válida.")
+
+if rutas_pdfs:
+    if st.button("🚀 Procesar y Consolidar Datos"):
+        lista_resultados = []
+        barra_progreso = st.progress(0)
+        total_archivos = len(rutas_pdfs)
+
+        for i, ruta_pdf in enumerate(rutas_pdfs):
+            info_caso = extraer_datos_pdf(ruta_pdf)
+            if info_caso:
+                lista_resultados.append(info_caso)
+            barra_progreso.progress((i + 1) / total_archivos)
+
+        if lista_resultados:
+            df_resultado = pd.DataFrame(lista_resultados)
+            
+            st.success("¡Estructuración y consolidación completadas con éxito!")
+            
+            st.subheader("📊 Tabla Consolidada Final con los Datos Extraídos:")
+            st.dataframe(df_resultado, use_container_width=True)
+
+            nombre_excel = "Estudio_Operativo_Final_Preciso.xlsx"
+            df_resultado.to_excel(nombre_excel, index=False)
+
+            with open(nombre_excel, "rb") as f:
+                st.download_button(
+                    label="📥 Descargar Archivo Excel Estructurado",
+                    data=f,
+                    file_name=nombre_excel,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+        else:
+            st.error("No se pudieron extraer datos de los archivos seleccionados.")
+else:
+    st.info("Por favor, selecciona los archivos o ingresa la ruta de la carpeta para comenzar.")
