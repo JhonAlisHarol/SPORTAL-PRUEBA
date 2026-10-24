@@ -68,7 +68,7 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
             "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"
         ]
 
-        # Detección precisa de Zona, Ubicación Completa y Operador
+        # Detección precisa de Zona, Ubicación Completa Ampliada y Operador
         for i, linea in enumerate(lineas):
             linea_up = linea.upper()
             
@@ -83,15 +83,25 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
                 if datos["Zona"] == "N/A":
                     datos["Zona"] = linea
 
-            # Buscar Ubicación real ampliada y completa (capturando el contexto geográfico detallado)
+            # Buscar Ubicación ampliada (capturando varias líneas consecutivas para asegurar el nombre completo del lugar)
             if "UBICACION" in linea_up or "DIRECCION" in linea_up or "LUGAR" in linea_up:
-                if i + 1 < len(lineas):
-                    ubi_desc = lineas[i + 1]
-                    # Si la línea siguiente tiene más detalles o coordenadas, las unimos para que quede completo
-                    if i + 2 < len(lineas) and not any(kw in lineas[i + 2].upper() for kw in ["FECHA", "ESTADO", "TIPO", "INCIDENTE"]):
-                        ubi_desc += " - " + lineas[i + 2]
-                    if len(ubi_desc) > 3 and "EXPUSO" not in ubi_desc.upper():
-                        datos["Ubicación"] = ubi_desc
+                bloque_ubi = []
+                for j in range(i + 1, min(i + 4, len(lineas))):
+                    sig_linea = lineas[j]
+                    if any(kw in sig_linea.upper() for kw in ["FECHA", "ESTADO", "TIPO", "INCIDENTE", "ZONA", "ORIGEN"]):
+                        break
+                    bloque_ubi.append(sig_linea)
+                if bloque_ubi:
+                    texto_unido = " ".join(bloque_ubi)
+                    if len(texto_unido) > 3 and "EXPUSO" not in texto_unido.upper():
+                        datos["Ubicación"] = texto_unido
+
+        # Respaldo para Ubicación si menciona lugares clave en el texto general (ej. Veracruz / El Palmar)
+        if datos["Ubicación"] == "N/A" or len(datos["Ubicación"]) < 5:
+            for l in lineas:
+                if "VERACRUZ" in l.upper() or "PALMAR" in l.upper():
+                    datos["Ubicación"] = l
+                    break
 
         # Respaldo para Operador si aparece en el texto general
         if datos["Operador"] == "N/A":
