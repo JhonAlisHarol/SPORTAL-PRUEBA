@@ -1,81 +1,93 @@
-import streamlit as st
+import os
+import time
 import pandas as pd
-import pypdf
+from playwright.sync_api import sync_playwright
 
-st.set_page_config(page_title="Procesador Masivo y Consolidador S.PORTAL", layout="wide")
-
-st.title("📊 Procesador Masivo y Consolidador S.PORTAL")
-st.markdown("Sube tus reportes PDF masivos para consolidar automáticamente la información en la tabla de Excel.")
-
-# 1. Definir la estructura base de la tabla vacía con todas las columnas requeridas
-columnas_base = [
-    "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", 
-    "Operador", "Fecha Creación", "Hora Creación", 
-    "Fecha 1", "Hora 1", "Reporte 1", 
-    "Fecha 2", "Hora 2", "Reporte 2"
-]
-
-# Creamos un DataFrame vacío con las columnas para mostrarlo de inmediato
-df_vacio = pd.DataFrame(columns=columnas_base)
-
-st.subheader("📋 Vista Previa de la Tabla Maestra")
-# Mostramos el cuadro de Excel vacío antes de subir cualquier archivo
-st.dataframe(df_vacio, use_container_width=True)
-
-st.markdown("---")
-
-# 2. Componente visible para la carga masiva de múltiples archivos PDF
-uploaded_files = st.file_uploader(
-    "Sube tus archivos PDF de S.PORTAL (puedes seleccionar múltiples archivos):", 
-    type=["pdf"], 
-    accept_multiple_files=True
-)
-
-if uploaded_files:
-    st.success(f"¡Se han cargado {len(uploaded_files)} archivos PDF correctamente!")
+def extraer_incidentes_s_portal():
+    print("Iniciando el navegador automatizado...")
     
-    if st.button("Procesar y Llenar Tabla"):
-        datos_procesados = []
+    with sync_playwright() as p:
+        # Puedes cambiar a headless=False si quieres ver cómo el robot abre la página y hace el trabajo
+        browser = p.chromium.launch(headless=False, slow_mo=100)
+        page = browser.new_page()
         
-        for uploaded_file in uploaded_files:
-            # Lector de PDF integrado
-            reader = pypdf.PdfReader(uploaded_file)
-            texto_completo = ""
-            for page in reader.pages:
-                texto_completo += page.extract_text() or ""
+        # 1. URL de acceso al S.Portal / Hexagon (Ajusta la URL exacta de tu entorno)
+        url_portal = "https://c5-cad-app.c5.gob.pa/Tupa/PNPC5" # Reemplaza con la URL base si es distinta
+        print(f"Navegando a: {url_portal}")
+        page.goto(url_portal)
+        
+        # 2. LOGIN AUTOMÁTICO (Ingresa tus selectores según los campos de usuario y contraseña)
+        # Nota: Deberás verificar los IDs o nombres de los campos de texto de login si cambian
+        try:
+            # Ejemplo genérico de campos de usuario y contraseña (ajustar selectores si es necesario)
+            # page.fill('input[name="username"]', 'TU_USUARIO')
+            # page.fill('input[name="password"]', 'TU_CLAVE')
+            # page.click('button[type="submit"]')
+            print("Por favor, inicia sesión manualmente en la ventana del navegador que se abrio...")
+            print("Una vez que estés dentro de la lista de incidentes, presiona ENTER aquí en la consola.")
+            input() # Pausa para que entres con tu usuario y clave de forma segura si hay captchas o tokens
+        except Exception as e:
+            print(f"Error en el login: {e}")
             
-            # Simulación de extracción de datos clave del PDF para la tabla
-            nombre_archivo = uploaded_file.name
-            datos_procesados.append({
-                "Incidente": nombre_archivo.replace("Incidente_", "").replace(".pdf", ""),
-                "Tipo": "Extracción Automática",
-                "Subtipo": "N/A",
-                "Ubicación": "N/A",
-                "Zona": "N/A",
-                "Operador": "Asignado",
-                "Fecha Creación": "23/10/2026",
-                "Hora Creación": "12:00 PM",
-                "Fecha 1": "23/10/2026",
-                "Hora 1": "12:05 PM",
-                "Reporte 1": texto_completo[:200] + "...", # Bitácora extraída
-                "Fecha 2": "",
-                "Hora 2": "",
-                "Reporte 2": ""
-            })
+        print("Iniciando la lectura masiva de casos...")
+        
+        # Lista para almacenar los datos extraídos de cada caso
+        datos_consolidado = []
+        
+        # Simulación del bucle que recorrerá la tabla de incidentes
+        # Aquí el script leerá las filas de la tabla principal
+        filas = page.locator("table tr") # Ajustar el selector de la tabla de incidentes
+        total_filas = filas.count()
+        print(f"Se detectaron {total_filas} filas en la vista actual.")
+        
+        for i in range(1, total_filas): # Empezamos en 1 para saltar los encabezados
+            fila = filas.nth(i)
             
-        # Convertir resultados a DataFrame lleno
-        df_lleno = pd.DataFrame(datos_procesados)
-        
-        st.subheader("✅ Tabla Consolidada con los Datos Extraídos")
-        st.dataframe(df_lleno, use_container_width=True)
-        
-        # Botón para descargar el resultado consolidado
-        csv_data = df_lleno.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Descargar Reporte Consolidado en CSV/Excel",
-            data=csv_data,
-            file_name="Reporte_Consolidado_SPortal.csv",
-            mime="text/csv"
-        )
-else:
-    st.info("Sube tus archivos PDF arriba para comenzar a procesar y llenar la tabla de forma automática.")
+            # Extraer columnas básicas de la tabla principal
+            try:
+                nro_incidente = fila.locator("td").nth(0).inner_text()
+                tipo = fila.locator("td").nth(1).inner_text()
+                subtipo = fila.locator("td").nth(2).inner_text()
+                ubicacion = fila.locator("td").nth(3).inner_text()
+                zona = fila.locator("td").nth(4).inner_text()
+                creacion = fila.locator("td").nth(5).inner_text()
+                operador = fila.locator("td").nth(6).inner_text()
+                
+                # Opcional: Si necesitas hacer clic para entrar al detalle y extraer la bitácora completa:
+                # fila.locator("a").click() # o hacer clic sobre el ID del incidente
+                # page.wait_for_selector(".detalle-incidente")
+                # extraer detalles de la bitácora...
+                # page.go_back()
+                
+                caso_info = {
+                    "Incidente": nro_incidente,
+                    "Tipo": tipo,
+                    "Subtipo": subtipo,
+                    "Ubicación": ubicacion,
+                    "Zona": zona,
+                    "Creación": creacion,
+                    "Operador": operador
+                }
+                
+                datos_consolidado.append(caso_info)
+                print(f"Procesado caso {i}/{total_filas}: {nro_incidente}")
+                
+            except Exception as e:
+                print(f"No se pudo leer la fila {i}: {e}")
+                continue
+
+        # 3. EXPORTAR A EXCEL MASIVO
+        if datos_consolidado:
+            df = pd.DataFrame(datos_consolidado)
+            nombre_archivo = "Estudio_Incidentes_Consolidado.xlsx"
+            df.to_excel(nombre_archivo, index=False)
+            print(f"\n¡Éxito! Se han exportado {len(datos_consolidado)} casos al archivo: {nombre_archivo}")
+        else:
+            print("No se recolectaron datos para exportar.")
+
+        browser.close()
+
+if __name__ == "__main__":
+    extrayendo = False
+    # Descomenta la siguiente línea cuando configures tus selectores exactos
+    # extraer_incidentes_s_portal()
