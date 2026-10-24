@@ -34,7 +34,7 @@ def procesar_pdf_listado(ruta_pdf):
             
             # Detectar código de incidente
             match_inc = re.search(r'(P\d{10,12})', linea)
-            if match_inc;
+            if match_inc:
             if match_inc:
                 incidente_id = match_inc.group(1)
                 
