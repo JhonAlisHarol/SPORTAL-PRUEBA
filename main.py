@@ -27,14 +27,12 @@ def procesar_pdf_listado(ruta_pdf):
         casos_extraidos = []
         
         # Recorremos el texto buscando patrones de números de incidente (Ej: P20260238869)
-        # y capturando la información circundante en el listado tabular
         i = 0
         while i < len(lineas):
             linea = lineas[i]
             
             # Detectar código de incidente
             match_inc = re.search(r'(P\d{10,12})', linea)
-            if match_inc:
             if match_inc:
                 incidente_id = match_inc.group(1)
                 
@@ -49,13 +47,13 @@ def procesar_pdf_listado(ruta_pdf):
                 # Buscamos en las líneas siguientes inmediatas los datos de la fila del reporte tabular
                 contexto_bloque = " ".join(lineas[i:i+10])
                 
-                # Extraer Fecha y Hora de Creación (dd/mm/yyyy hh:mm:ss o similar)
+                # Extraer Fecha y Hora de Creación
                 match_fh = re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})', contexto_bloque)
                 if match_fh:
                     fecha_creacion = match_fh.group(1)
                     hora_creacion = match_fh.group(2)
                 
-                # Extraer Zona (Patrones como 12ZP, 8ZP, TRAN, etc.)
+                # Extraer Zona
                 match_zn = re.search(r'\b(\d{1,2}[A-Z]{1,3}|TRAN)\b', contexto_bloque)
                 if match_zn:
                     zona = match_zn.group(1)
