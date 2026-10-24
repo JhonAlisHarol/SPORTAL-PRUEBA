@@ -27,7 +27,7 @@ st.dataframe(df_vacio, use_container_width=True)
 st.markdown("---")
 
 def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
-    """Extracción optimizada extrayendo dinámicamente Tipo, Subtipo y Ubicación oficial para el Excel."""
+    """Extracción optimizada con captura directa y dinámica de Tipo y Subtipo desde la cabecera."""
     try:
         reader = PdfReader(ruta_pdf)
         texto_completo = ""
@@ -81,24 +81,11 @@ def extraer_datos_pdf_rapido(ruta_pdf, nombre_archivo_original=""):
                 if datos["Zona"] == "N/A":
                     datos["Zona"] = linea
 
-        # Extracción dinámica y precisa de Tipo y Subtipo buscando las etiquetas oficiales en el PDF
-        for i, linea in enumerate(lineas):
-            linea_up = linea.upper()
-            
-            if "TIPO" in linea_up and i + 1 < len(lineas) and datos["Tipo"] == "":
-                candidato_tipo = lineas[i + 1]
-                if candidato_tipo not in ["Subtipo", "Ubicacion", "Zona", "Operador"]:
-                    datos["Tipo"] = candidato_tipo
-
-            if "SUBTIPO" in linea_up and i + 1 < len(lineas) and datos["Subtipo"] == "":
-                candidato_sub = lineas[i + 1]
-                if candidato_sub not in ["Ubicacion", "Zona", "Operador", "Creacion"]:
-                    datos["Subtipo"] = candidato_sub
-
-        # Respaldo por posición si las etiquetas directas varían
-        if datos["Tipo"] == "" and len(lineas) > 5:
-            for idx, l in enumerate(lineas[:15]):
+        # Extracción directa y segura de Tipo y Subtipo basada en la posición del número de incidente
+        if datos["Incidente"]:
+            for idx, l in enumerate(lineas):
                 if datos["Incidente"] in l:
+                    # Las líneas siguientes inmediatas en la cabecera del PDF corresponden al Tipo y Subtipo
                     if idx + 1 < len(lineas):
                         datos["Tipo"] = lineas[idx + 1]
                     if idx + 2 < len(lineas):
