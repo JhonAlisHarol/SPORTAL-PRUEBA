@@ -1,15 +1,16 @@
 import os
 import re
 import tempfile
+import base64
 import pandas as pd
 from pypdf import PdfReader
 import streamlit as st
 
 # Configuración de la página
-st.set_page_config(page_title="Procesador Masivo de Listados S.PORTAL", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Procesador Masivo S.PORTAL con Visor PDF", page_icon="📄", layout="wide")
 
-st.title("📊 Procesador Masivo y Automático de Listados S.PORTAL")
-st.write("Sube tu PDF masivo de listado general. El sistema extraerá y estructurará todos los casos de golpe en un archivo Excel maestro.")
+st.title("📄 Procesador Masivo y Visor de PDF - S.PORTAL")
+st.write("Sube tu PDF masivo de listado general para procesarlo automáticamente y visualizarlo directamente en la aplicación.")
 
 def procesar_pdf_masivo(ruta_pdf):
     """Procesa el PDF de listado general de S.PORTAL y extrae de forma limpia todos los incidentes."""
@@ -21,7 +22,6 @@ def procesar_pdf_masivo(ruta_pdf):
             if t:
                 texto_completo += t + "\n"
 
-        # Limpiar y separar por líneas
         lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
         casos_extraidos = []
         
@@ -29,7 +29,6 @@ def procesar_pdf_masivo(ruta_pdf):
         while i < len(lineas):
             linea = lineas[i]
             
-            # Buscar el código del incidente (Ej: P20260238869)
             match_inc = re.search(r'(P\d{10,12})', linea)
             if match_inc:
                 incidente_id = match_inc.group(1)
@@ -41,21 +40,17 @@ def procesar_pdf_masivo(ruta_pdf):
                 hora_creacion = ""
                 operador = "N/A"
                 
-                # Tomar un bloque de contexto alrededor de la línea actual
                 contexto_bloque = " ".join(lineas[i:i+8])
                 
-                # Extraer Fecha y Hora de Creación
                 match_fh = re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})', contexto_bloque)
                 if match_fh:
                     fecha_creacion = match_fh.group(1)
                     hora_creacion = match_fh.group(2)
                 
-                # Extraer Zona (Patrones como 12ZP, 8ZP, TRAN, etc.)
                 match_zn = re.search(r'\b(\d{1,2}[A-Z]{1,3}|TRAN)\b', contexto_bloque)
                 if match_zn:
                     zona = match_zn.group(1)
 
-                # Extraer Operador por nombres frecuentes del C5
                 posibles_nombres = [
                     "ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE GIERHART", 
                     "JOAQUIN CHI", "DALILA TREJOS", "RICARDO EMILIO MAYORGA LORENZO", "HERMOGENES SANJUR", 
@@ -68,7 +63,6 @@ def procesar_pdf_masivo(ruta_pdf):
                         operador = nom
                         break
 
-                # Capturar Tipo y Subtipo analizando el texto del bloque
                 if "Alteracion de la Convivencia" in contexto_bloque or "Riña" in contexto_bloque:
                     tipo = "Alteracion de la Convivencia Pacifica"
                     subtipo = "Riña y Escándalo" if "Riña" in contexto_bloque else "Alteración del Orden Publico"
@@ -94,7 +88,6 @@ def procesar_pdf_masivo(ruta_pdf):
                     tipo = "Incidente General S.PORTAL"
                     subtipo = "N/A"
 
-                # Guardar el registro estructurado
                 casos_extraidos.append({
                     "Incidente": incidente_id,
                     "Tipo": tipo,
@@ -111,13 +104,21 @@ def procesar_pdf_masivo(ruta_pdf):
     except Exception as e:
         return []
 
-# Interfaz de carga en Streamlit
+def mostrar_visor_pdf(archivo_bytes):
+    """Genera un visor visual integrado para el PDF dentro de Streamlit."""
+    base64_pdf = base64.b64encode(archivo_bytes).decode('utf-8')
+    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600px" type="application/pdf"></iframe>'
+    st.markdown(pdf_display, unsafe_allow_html=True)
+
+# Interfaz de carga
 archivo_pdf = st.file_uploader("Sube el PDF de listado general de S.PORTAL:", type=["pdf"])
 
 if archivo_pdf:
+    bytes_pdf = archivo_pdf.getvalue()
+
     with st.spinner("Procesando masivamente el documento..."):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(archivo_pdf.getbuffer())
+            tmp.write(bytes_pdf)
             ruta_temporal = tmp.name
 
         resultados = procesar_pdf_masivo(ruta_temporal)
@@ -127,20 +128,29 @@ if archivo_pdf:
         df_final = pd.DataFrame(resultados)
         st.success(f"¡Procesamiento masivo exitoso! Se han consolidado {len(df_final)} casos en total.")
         
-        st.subheader("Vista previa de la Matriz Maestra:")
-        st.dataframe(df_final)
+        # Pestañas para organizar la vista previa del Excel y el Visor del PDF original
+        pestana1, pestana2 = st.tabs(["📊 Vista Previa Matriz Excel", "👀 Visor del PDF Original"])
 
-        nombre_excel = "Matriz_Operativa_S_PORTAL.xlsx"
-        df_final.to_excel(nombre_excel, index=False)
+        with pestana1:
+            st.subheader("Datos Estructurados:")
+            st.dataframe(df_final)
 
-        with open(nombre_excel, "rb") as f:
-            st.download_button(
-                label="📥 Descargar Archivo Excel Consolidado Maestro",
-                data=f,
-                file_name=nombre_excel,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            nombre_excel = "Matriz_Operativa_S_PORTAL.xlsx"
+            df_final.to_excel(nombre_excel, index=False)
+
+            with open(nombre_excel, "rb") as f:
+                st.download_button(
+                    label="📥 Descargar Archivo Excel Consolidado Maestro",
+                    data=f,
+                    file_name=nombre_excel,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+
+        with pestana2:
+            st.subheader("Documento PDF Original Integrado:")
+            mostrar_visor_pdf(bytes_pdf)
+
     else:
-        st.error("No se pudieron extraer datos válidos del PDF. Verifica que sea el reporte de listado general correcto.")
+        st.error("No se pudieron extraer datos válidos del PDF.")
 else:
     st.info("Por favor, sube tu archivo PDF de listado general de S.PORTAL para comenzar.")
