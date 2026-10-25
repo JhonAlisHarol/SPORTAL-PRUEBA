@@ -106,10 +106,10 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN DE INFORMACIÓN INTERNA)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN REAL DESDE EL PDF)
 # =========================================================================
 else:
-    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Estructura C5 Oficial)")
+    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Real C5)")
     
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Procesando estructura C5...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo información real...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -170,17 +170,12 @@ else:
                         datos = {
                             "Archivo": nombre_original,
                             "Incidente": incidente_val,
-                            "Tipo": "Pánico / Atención C5",
-                            "Subtipo": "N/A",
-                            "Ubicación": "COORDENADAS XY (CENTRO DE OPERACIÓN NACIONAL)",
-                            "Zona": "21ZP",
-                            "Operador": "LEOPOLDO SERRANO BROWN",
-                            "Fecha Creación": "01/01/2026",
-                            "Hora Creación": "00:01:13",
-                            "Fecha 1": "01/01/2026", "Hora 1": "00:05:00", "Reporte 1": f"Recepción y despacho inicial de emergencia para el incidente {incidente_val}",
-                            "Fecha 2": "01/01/2026", "Hora 2": "00:15:00", "Reporte 2": "Unidad en ruta hacia la ubicación coordinada",
-                            "Fecha 3": "01/01/2026", "Hora 3": "00:30:00", "Reporte 3": "Atención en sitio y control de la situación",
-                            "Fecha 4": "01/01/2026", "Hora 4": "01:00:00", "Reporte 4": "Finalización y cierre de expediente operativo"
+                            "Tipo": "N/A", "Subtipo": "N/A", "Ubicación": "N/A", "Zona": "N/A", "Operador": "N/A",
+                            "Fecha Creación": "N/A", "Hora Creación": "N/A",
+                            "Fecha 1": "N/A", "Hora 1": "N/A", "Reporte 1": "N/A",
+                            "Fecha 2": "N/A", "Hora 2": "N/A", "Reporte 2": "N/A",
+                            "Fecha 3": "N/A", "Hora 3": "N/A", "Reporte 3": "N/A",
+                            "Fecha 4": "N/A", "Hora 4": "N/A", "Reporte 4": "N/A"
                         }
 
                         try:
@@ -191,12 +186,36 @@ else:
                                 if t: texto_completo += t + "\n"
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
+
+                            # Extracción inteligente basada en las líneas del PDF
+                            for idx, linea in enumerate(lineas):
+                                if incidente_val in linea:
+                                    if idx + 1 < len(lineas): datos["Tipo"] = lineas[idx + 1]
+                                    if idx + 2 < len(lineas): datos["Subtipo"] = lineas[idx + 2]
+                                    if idx + 3 < len(lineas): datos["Ubicación"] = lineas[idx + 3]
+                                    if idx + 4 < len(lineas): datos["Zona"] = lineas[idx + 4]
+                                    if idx + 5 < len(lineas): datos["Operador"] = lineas[idx + 5]
+
+                            patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
+                            matches = list(re.finditer(patron_fh, texto_completo))
                             
-                            if len(lineas) > 1:
-                                for l in lineas:
-                                    if not patron_inc.search(l) and "S.PORTAL" not in l.upper() and "911" not in l and len(l) > 3:
-                                        datos["Tipo"] = l
-                                        break
+                            if matches:
+                                datos["Fecha Creación"] = matches[0].group(1)
+                                datos["Hora Creación"] = matches[0].group(2)
+
+                            marcas_tiempo = [{"fecha": m.group(1), "hora": m.group(2), "pos": m.start()} for m in matches if not (m.group(1) == datos["Fecha Creación"] and m.group(2) == datos["Hora Creación"] and len(matches) == 1)]
+                            
+                            for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
+                                datos[f"Fecha {idx_m}"] = marca["fecha"]
+                                datos[f"Hora {idx_m}"] = marca["hora"]
+
+                            for idx_m in range(len(marcas_tiempo)):
+                                if idx_m + 1 > 4: break
+                                inicio = marcas_tiempo[idx_m]["pos"] + len(f"{marcas_tiempo[idx_m]['fecha']} {marcas_tiempo[idx_m]['hora']}")
+                                fin = marcas_tiempo[idx_m + 1]["pos"] if idx_m + 1 < len(marcas_tiempo) else len(texto_completo)
+                                frag = texto_completo[inicio:fin].replace("Comentario Del Usuario", "").replace("\n", " ").strip()
+                                datos[f"Reporte {idx_m + 1}"] = frag[:400]
+
                         except Exception:
                             pass
 
@@ -215,12 +234,12 @@ else:
                         st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        nombre_excel = "Reporte_Masivo_Master_Lote.xlsx"
+                        nombre_excel = "Reporte_Masivo_Master_Real.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
                             st.download_button(
-                                label="📥 Descargar Excel Maestro Consolidado",
+                                label="📥 Descargar Excel Maestro con Datos Reales",
                                 data=f, file_name=nombre_excel,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
