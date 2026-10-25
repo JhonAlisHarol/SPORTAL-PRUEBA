@@ -98,7 +98,7 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO CON TABLA DE PREvisualización EN VIVO
+# MODULO 2: PROCESADOR MASIVO CON EXTRACCIÓN DIRECTA OPTIMIZADA
 # =========================================================================
 else:
     st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo")
@@ -121,7 +121,7 @@ else:
     if archivo_zip:
         st.info(f"Paquete detectado: {archivo_zip.name} ({round(archivo_zip.size / (1024*1024), 2)} MB).")
         
-        if st.button("🚀 Iniciar Procesamiento Masivo con Vista en Directo"):
+        if st.button("🚀 Iniciar Procesamiento Masivo con Extracción Directa"):
             with tempfile.TemporaryDirectory() as temp_dir:
                 ruta_zip = os.path.join(temp_dir, "paquete.zip")
                 
@@ -145,7 +145,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Iniciando extracción en vivo...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Iniciando extracción directa...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -162,6 +162,7 @@ else:
                             "Fecha 4": "N/A", "Hora 4": "N/A", "Reporte 4": "N/A"
                         }
 
+                        # 1. Extraer incidente del nombre del archivo
                         match_arch = re.search(r'(P\d{10,12})', nombre_original)
                         if match_arch:
                             datos["Incidente"] = match_arch.group(1)
@@ -175,42 +176,44 @@ else:
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
+                            # Buscar código en el texto por si acaso
                             match_inc = re.search(r'(P\d{10,12})', texto_completo)
                             if match_inc:
                                 datos["Incidente"] = match_inc.group(1)
 
+                            # 2. Extracción directa y flexible de líneas clave
+                            lineas_validas = []
+                            ops = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE GIERHART", "JOAQUIN CHI", "DALILA TREJOS", "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"]
+
                             for idx, linea in enumerate(lineas):
                                 linea_up = linea.upper()
-                                
-                                ops = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE GIERHART", "JOAQUIN CHI", "DALILA TREJOS", "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"]
+
+                                # Detectar operador
                                 for op in ops:
                                     if op in linea_up:
                                         datos["Operador"] = op
 
+                                # Detectar Zona
                                 if (re.search(r'\b\d{0,2}[A-Z]{1,3}\b', linea) and len(linea) <= 15) and ("ZP" in linea_up or "ZF" in linea_up or "ZONA" in linea_up):
                                     datos["Zona"] = linea
 
+                                # Detectar Coordenadas / Ubicación
                                 if "COORDENADAS" in linea_up or "XY" in linea_up:
                                     datos["Ubicación"] = linea
                                     if idx + 1 < len(lineas) and ("(" in lineas[idx+1] or ")" in lineas[idx+1]):
                                         datos["Ubicación"] += " " + lineas[idx+1]
 
-                                if datos["Incidente"] in linea:
-                                    if idx + 1 < len(lineas) and datos["Tipo"] == "N/A":
-                                        datos["Tipo"] = lineas[idx + 1]
-                                    if idx + 2 < len(lineas) and datos["Subtipo"] == "N/A":
-                                        datos["Subtipo"] = lineas[idx + 2]
+                                # Filtrar líneas de texto útiles para Tipo y Subtipo
+                                if not re.search(r'P\d{10,12}', linea) and "S.PORTAL" not in linea_up and "PAGINA" not in linea_up and "CENTRO" not in linea_up and len(linea) > 3:
+                                    lineas_validas.append(linea)
 
-                            if datos["Tipo"] == "N/A" and len(lineas) > 1:
-                                for l in lineas:
-                                    if not re.search(r'P\d{10,12}', l) and "S.PORTAL" not in l.upper() and "PAGINA" not in l.upper() and len(l) > 3:
-                                        if datos["Tipo"] == "N/A":
-                                            datos["Tipo"] = l
-                                            continue
-                                        elif datos["Subtipo"] == "N/A":
-                                            datos["Subtipo"] = l
-                                            break
+                            # Asignar Tipo y Subtipo de forma directa de las líneas encontradas
+                            if len(lineas_validas) > 0:
+                                datos["Tipo"] = lineas_validas[0]
+                            if len(lineas_validas) > 1:
+                                datos["Subtipo"] = lineas_validas[1]
 
+                            # 3. Extracción de fechas, horas y bitácoras de reportes (1 al 4)
                             patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
                             matches = list(re.finditer(patron_fh, texto_completo))
                             
@@ -244,7 +247,6 @@ else:
                             barra_progreso.progress(porcentaje)
                             texto_estado.text(f"⏳ Procesando expediente {i + 1:,} de {total_archivos:,} ({int(porcentaje * 100)}%)...")
                             
-                            # Mostrar los datos actualizados en la tabla en tiempo real
                             df_temp = pd.DataFrame(lista_resultados)
                             placeholder_tabla.dataframe(df_temp.tail(20), use_container_width=True)
 
