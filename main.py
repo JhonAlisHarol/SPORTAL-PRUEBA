@@ -1,7 +1,6 @@
 import os
 import re
 import tempfile
-import time
 import zipfile
 import pandas as pd
 from pypdf import PdfReader
@@ -10,7 +9,7 @@ import streamlit as st
 st.set_page_config(page_title="Centro de Procesamiento S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Sistema Integral de Procesamiento S.PORTAL")
-st.write("Herramienta avanzada: Procesamiento masivo optimizado para expedientes.")
+st.write("Herramienta avanzada: Procesamiento masivo optimizado con barra de progreso en tiempo real.")
 
 modo = st.sidebar.selectbox(
     "Selecciona el Modulo de Trabajo:",
@@ -40,12 +39,7 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 reader = PdfReader(ruta_tmp)
                 total_paginas = len(reader.pages)
                 lista_registros = []
-                
-                # Barra de progreso para el Módulo 1 con indicador de tiempo
                 barra = st.progress(0)
-                tiempo_inicio_m1 = time.time()
-                estado_texto = st.empty()
-                
                 patron_fila = re.compile(r'(P\d{10,12})')
 
                 for idx, pagina in enumerate(reader.pages):
@@ -81,17 +75,7 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                                 "Ubicación": ubi_val, "Zona": zona_val, "Creación": crea_val, "Operador": op_val
                             })
                         i += 1
-                    
-                    progreso = (idx + 1) / total_paginas
-                    barra.progress(progreso)
-                    
-                    # Cálculo de tiempo transcurrido y restante
-                    tiempo_actual = time.time()
-                    tiempo_transcurrido = tiempo_actual - tiempo_inicio_m1
-                    if progreso > 0:
-                        tiempo_total_estimado = tiempo_transcurrido / progreso
-                        tiempo_restante = max(0, tiempo_total_estimado - tiempo_transcurrido)
-                        estado_texto.text(f"Procesando página {idx + 1} de {total_paginas} ({int(progreso * 100)}%) — Transcurrido: {int(tiempo_transcurrido)}s | Restante aprox: {int(tiempo_restante)}s")
+                    barra.progress((idx + 1) / total_paginas)
 
                 os.unlink(ruta_tmp)
 
@@ -129,7 +113,7 @@ else:
     if archivo_zip:
         st.info(f"Paquete detectado: {archivo_zip.name} ({round(archivo_zip.size / (1024*1024), 2)} MB).")
         
-        if st.button("🚀 Iniciar Procesamiento Masivo con Barra de Tiempo"):
+        if st.button("🚀 Iniciar Procesamiento Masivo con Barra de Progreso"):
             with tempfile.TemporaryDirectory() as temp_dir:
                 ruta_zip = os.path.join(temp_dir, "paquete.zip")
                 
@@ -155,11 +139,10 @@ else:
                 if total_archivos > 0:
                     st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Iniciando captura masiva...")
                     
-                    barra = st.progress(0)
-                    estado_texto = st.empty()
+                    # Elementos visuales de la barra de tiempo y progreso
+                    barra_progreso = st.progress(0)
+                    texto_estado = st.empty()
                     lista_resultados = []
-                    
-                    tiempo_inicio = time.time()
 
                     for i, (ruta_pdf, nombre_original) in enumerate(archivos_pdf):
                         datos = {
@@ -228,21 +211,15 @@ else:
 
                         lista_resultados.append(datos)
 
-                        # Actualización de la barra y cálculo de tiempo en vivo cada 50 archivos
+                        # Actualización de la barra de progreso y texto dinámico cada 50 archivos
                         if i % 50 == 0 or i == total_archivos - 1:
-                            progreso = (i + 1) / total_archivos
-                            barra.progress(progreso)
-                            
-                            tiempo_actual = time.time()
-                            tiempo_transcurrido = tiempo_actual - tiempo_inicio
-                            if progreso > 0:
-                                tiempo_total_estimado = tiempo_transcurrido / progreso
-                                tiempo_restante = max(0, tiempo_total_estimado - tiempo_transcurrido)
-                                estado_texto.text(f"Procesando expediente {i + 1:,} de {total_archivos:,} ({int(progreso * 100)}%) — Transcurrido: {int(tiempo_transcurrido)}s | Restante aprox: {int(tiempo_restante)}s")
+                            porcentaje = (i + 1) / total_archivos
+                            barra_progreso.progress(porcentaje)
+                            texto_estado.text(f"⏳ Procesando expediente {i + 1:,} de {total_archivos:,} ({int(porcentaje * 100)}%)...")
 
                     if lista_resultados:
                         df_resultado = pd.DataFrame(lista_resultados)
-                        st.success(f"¡Procesamiento masivo finalizado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
+                        st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         st.dataframe(df_resultado.head(50), use_container_width=True)
 
                         nombre_excel = "Reporte_Masivo_Master_30k.xlsx"
