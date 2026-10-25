@@ -9,26 +9,26 @@ import streamlit as st
 st.set_page_config(page_title="Centro de Procesamiento S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Sistema Integral de Procesamiento S.PORTAL")
-st.write("Herramienta avanzada: Procesamiento masivo de expedientes con extracción tabular completa C5 Panamá.")
+st.write("Herramienta avanzada: Procesamiento masivo multimes y de alto volumen (Sin límite de peso por ruta local).")
 
 modo = st.sidebar.selectbox(
     "Selecciona el Modulo de Trabajo:",
     [
-        "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)", 
-        "2. Procesador Masivo de Alto Volumen (+30k PDFs)"
+        "1. Procesador de Listados Consolidados (Cualquier Mes)", 
+        "2. Procesador Masivo por Carpeta Local (+5GB)"
     ]
 )
 
 st.markdown("---")
 
 # =========================================================================
-# MODULO 1: PROCESADOR DE LISTADOS CONSOLIDADOS (INTACTO CON ENLACES)
+# MODULO 1: PROCESADOR DE LISTADOS CONSOLIDADOS (MULTIMES)
 # =========================================================================
-if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
-    st.header("📄 Extractor de Listados Consolidados Masivos")
-    st.write("Sube tu archivo PDF consolidado general para extraer automáticamente todos los incidentes y sus enlaces.")
+if modo == "1. Procesador de Listados Consolidados (Cualquier Mes)":
+    st.header("📄 Extractor de Listados Consolidados Mensuales")
+    st.write("Sube el archivo PDF consolidado del mes que deseas procesar (Enero, Febrero, etc.) para extraer automáticamente todos los incidentes y sus enlaces.")
 
-    archivo_consolidado = st.file_uploader("Sube el PDF consolidado general:", type=["pdf"], key="pdf_con")
+    archivo_consolidado = st.file_uploader("Sube el PDF consolidado mensual:", type=["pdf"], key="pdf_con")
 
     if archivo_consolidado:
         st.info(f"Archivo cargado: {archivo_consolidado.name}. Listo para procesar.")
@@ -95,7 +95,7 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                     st.success(f"¡Extracción completada! Se encontraron {len(df_cons)} registros únicos con sus enlaces.")
                     st.dataframe(df_cons, use_container_width=True)
 
-                    nombre_out = "Reporte_Consolidado_Con_Enlaces.xlsx"
+                    nombre_out = "Reporte_Consolidado_Mes_Con_Enlaces.xlsx"
                     df_cons.to_excel(nombre_out, index=False)
 
                     with open(nombre_out, "rb") as f:
@@ -106,11 +106,15 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR REAL
+# MODULO 2: PROCESADOR MASIVO POR CARPETA LOCAL (SIN LÍMITE DE TAMAÑO)
 # =========================================================================
 else:
-    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Masiva C5)")
-    
+    st.subheader("📁 Procesamiento Masivo Directo desde Carpeta Local (Multimes)")
+    st.write("Indica la ruta de la carpeta en tu equipo donde tienes descargados los miles de expedientes PDF del mes o período que deseas auditar.")
+
+    ruta_por_defecto = r"C:\Users\hcedeño\Desktop\Reportes_S_Portal_PDF"
+    ruta_carpeta = st.text_input("Ruta absoluta de la carpeta con los PDFs:", value=ruta_por_defecto)
+
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
         "Fecha Creación", "Hora Creación", "Fecha 1", "Hora 1", "Reporte 1",
@@ -121,139 +125,112 @@ else:
     placeholder_tabla.dataframe(pd.DataFrame(columns=columnas_base), use_container_width=True)
     st.markdown("---")
 
-    archivo_zip = st.file_uploader(
-        "Sube tu paquete comprimido (.zip) con los expedientes individuales:", 
-        type=["zip"]
-    )
+    if st.button("🚀 Iniciar Lectura Masiva desde Disco Local"):
+        if os.path.exists(ruta_carpeta):
+            archivos_pdf = []
+            for root, dirs, files in os.walk(ruta_carpeta):
+                for file in files:
+                    if file.lower().endswith('.pdf'):
+                        archivos_pdf.append((os.path.join(root, file), file))
 
-    if archivo_zip:
-        st.info(f"Paquete detectado: {archivo_zip.name} ({round(archivo_zip.size / (1024*1024), 2)} MB).")
-        
-        if st.button("🚀 Iniciar Procesamiento Masivo Definitivo"):
-            with tempfile.TemporaryDirectory() as temp_dir:
-                ruta_zip = os.path.join(temp_dir, "paquete.zip")
+            total_archivos = len(archivos_pdf)
+
+            if total_archivos > 0:
+                st.success(f"¡Se encontraron {total_archivos:,} archivos PDF en la carpeta! Procesando...")
                 
-                with open(ruta_zip, "wb") as f:
-                    for chunk in archivo_zip:
-                        f.write(chunk)
+                barra_progreso = st.progress(0)
+                texto_estado = st.empty()
+                lista_resultados = []
 
-                st.info("Descomprimiendo archivos en el servidor...")
-                try:
-                    with zipfile.ZipFile(ruta_zip, 'r') as zip_ref:
-                        zip_ref.extractall(temp_dir)
-                except Exception as e:
-                    st.error(f"Error al descomprimir: {e}")
+                patron_inc = re.compile(r'(P\d{10,12})')
 
-                archivos_pdf = []
-                for root, dirs, files in os.walk(temp_dir):
-                    for file in files:
-                        if file.lower().endswith('.pdf'):
-                            archivos_pdf.append((os.path.join(root, file), file))
+                for i, (ruta_pdf, nombre_original) in enumerate(archivos_pdf):
+                    incidente_val = "S/N"
+                    match_arch = patron_inc.search(nombre_original)
+                    if match_arch:
+                        incidente_val = match_arch.group(1)
 
-                total_archivos = len(archivos_pdf)
-                
-                if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Procesando extracción completa...")
-                    
-                    barra_progreso = st.progress(0)
-                    texto_estado = st.empty()
-                    lista_resultados = []
+                    enlace_portal = f"http://c5-cad-app.c5.gob.pa/Tupa/PNPC5/Report/DetallesDelIncidente?Evento={incidente_val}"
 
-                    patron_inc = re.compile(r'(P\d{10,12})')
+                    datos = {
+                        "Archivo": nombre_original,
+                        "Incidente": incidente_val,
+                        "Tipo": "N/A", "Subtipo": "N/A", "Ubicación": "N/A", "Zona": "N/A", "Operador": "N/A",
+                        "Fecha Creación": "N/A", "Hora Creación": "N/A",
+                        "Fecha 1": "N/A", "Hora 1": "N/A", "Reporte 1": "N/A",
+                        "Fecha 2": "N/A", "Hora 2": "N/A", "Reporte 2": "N/A",
+                        "Fecha 3": "N/A", "Hora 3": "N/A", "Reporte 3": "N/A",
+                        "Fecha 4": "N/A", "Hora 4": "N/A", "Reporte 4": "N/A",
+                        "Enlace S.PORTAL": enlace_portal
+                    }
 
-                    for i, (ruta_pdf, nombre_original) in enumerate(archivos_pdf):
-                        incidente_val = "S/N"
-                        match_arch = patron_inc.search(nombre_original)
-                        if match_arch:
-                            incidente_val = match_arch.group(1)
+                    try:
+                        reader = PdfReader(ruta_pdf)
+                        texto_completo = ""
+                        for pagina in reader.pages:
+                            t = pagina.extract_text()
+                            if t: texto_completo += t + "\n"
 
-                        enlace_portal = f"http://c5-cad-app.c5.gob.pa/Tupa/PNPC5/Report/DetallesDelIncidente?Evento={incidente_val}"
+                        lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-                        datos = {
-                            "Archivo": nombre_original,
-                            "Incidente": incidente_val,
-                            "Tipo": "N/A",
-                            "Subtipo": "N/A",
-                            "Ubicación": "N/A",
-                            "Zona": "N/A",
-                            "Operador": "N/A",
-                            "Fecha Creación": "N/A",
-                            "Hora Creación": "N/A",
-                            "Fecha 1": "N/A", "Hora 1": "N/A", "Reporte 1": "N/A",
-                            "Fecha 2": "N/A", "Hora 2": "N/A", "Reporte 2": "N/A",
-                            "Fecha 3": "N/A", "Hora 3": "N/A", "Reporte 3": "N/A",
-                            "Fecha 4": "N/A", "Hora 4": "N/A", "Reporte 4": "N/A",
-                            "Enlace S.PORTAL": enlace_portal
-                        }
+                        for idx, linea in enumerate(lineas):
+                            if incidente_val in linea:
+                                if idx + 1 < len(lineas): datos["Tipo"] = lineas[idx + 1]
+                                if idx + 2 < len(lineas): datos["Subtipo"] = lineas[idx + 2]
+                                if idx + 3 < len(lineas): datos["Ubicación"] = lineas[idx + 3]
+                                if idx + 4 < len(lineas): datos["Zona"] = lineas[idx + 4]
+                                if idx + 5 < len(lineas): datos["Operador"] = lineas[idx + 5]
 
-                        try:
-                            reader = PdfReader(ruta_pdf)
-                            texto_completo = ""
-                            for pagina in reader.pages:
-                                t = pagina.extract_text()
-                                if t: texto_completo += t + "\n"
+                        patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
+                        matches = list(re.finditer(patron_fh, texto_completo))
+                        
+                        if matches:
+                            datos["Fecha Creación"] = matches[0].group(1)
+                            datos["Hora Creación"] = matches[0].group(2)
 
-                            lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
+                        marcas_tiempo = [{"fecha": m.group(1), "hora": m.group(2), "pos": m.start()} for m in matches if not (m.group(1) == datos["Fecha Creación"] and m.group(2) == datos["Hora Creación"] and len(matches) == 1)]
+                        
+                        for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
+                            datos[f"Fecha {idx_m}"] = marca["fecha"]
+                            datos[f"Hora {idx_m}"] = marca["hora"]
 
-                            for idx, linea in enumerate(lineas):
-                                linea_up = linea.upper()
-                                if incidente_val in linea:
-                                    if idx + 1 < len(lineas): datos["Tipo"] = lineas[idx + 1]
-                                    if idx + 2 < len(lineas): datos["Subtipo"] = lineas[idx + 2]
-                                    if idx + 3 < len(lineas): datos["Ubicación"] = lineas[idx + 3]
-                                    if idx + 4 < len(lineas): datos["Zona"] = lineas[idx + 4]
-                                    if idx + 5 < len(lineas): datos["Operador"] = lineas[idx + 5]
+                        for idx_m in range(len(marcas_tiempo)):
+                            if idx_m + 1 > 4: break
+                            inicio = marcas_tiempo[idx_m]["pos"] + len(f"{marcas_tiempo[idx_m]['fecha']} {marcas_tiempo[idx_m]['hora']}")
+                            fin = marcas_tiempo[idx_m + 1]["pos"] if idx_m + 1 < len(marcas_tiempo) else len(texto_completo)
+                            frag = texto_completo[inicio:fin].replace("Comentario Del Usuario", "").replace("\n", " ").strip()
+                            datos[f"Reporte {idx_m + 1}"] = frag[:400]
 
-                            patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
-                            matches = list(re.finditer(patron_fh, texto_completo))
-                            
-                            if matches:
-                                datos["Fecha Creación"] = matches[0].group(1)
-                                datos["Hora Creación"] = matches[0].group(2)
+                    except Exception:
+                        pass
 
-                            marcas_tiempo = [{"fecha": m.group(1), "hora": m.group(2), "pos": m.start()} for m in matches if not (m.group(1) == datos["Fecha Creación"] and m.group(2) == datos["Hora Creación"] and len(matches) == 1)]
-                            
-                            for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
-                                datos[f"Fecha {idx_m}"] = marca["fecha"]
-                                datos[f"Hora {idx_m}"] = marca["hora"]
+                    lista_resultados.append(datos)
 
-                            for idx_m in range(len(marcas_tiempo)):
-                                if idx_m + 1 > 4: break
-                                inicio = marcas_tiempo[idx_m]["pos"] + len(f"{marcas_tiempo[idx_m]['fecha']} {marcas_tiempo[idx_m]['hora']}")
-                                fin = marcas_tiempo[idx_m + 1]["pos"] if idx_m + 1 < len(marcas_tiempo) else len(texto_completo)
-                                frag = texto_completo[inicio:fin].replace("Comentario Del Usuario", "").replace("\n", " ").strip()
-                                datos[f"Reporte {idx_m + 1}"] = frag[:400]
+                    if i % 100 == 0 or i == total_archivos - 1:
+                        porcentaje = (i + 1) / total_archivos
+                        barra_progreso.progress(porcentaje)
+                        texto_estado.text(f"⏳ Procesando expediente {i + 1:,} de {total_archivos:,} ({int(porcentaje * 100)}%)...")
+                        
+                        df_temp = pd.DataFrame(lista_resultados)
+                        placeholder_tabla.dataframe(df_temp.tail(20), use_container_width=True)
 
-                        except Exception:
-                            pass
+                if lista_resultados:
+                    df_resultado = pd.DataFrame(lista_resultados)
+                    st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
+                    placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        lista_resultados.append(datos)
+                    nombre_excel = "Reporte_Masivo_Master_Multimes.xlsx"
+                    df_resultado.to_excel(nombre_excel, index=False)
 
-                        if i % 100 == 0 or i == total_archivos - 1:
-                            porcentaje = (i + 1) / total_archivos
-                            barra_progreso.progress(porcentaje)
-                            texto_estado.text(f"⏳ Procesando expediente {i + 1:,} de {total_archivos:,} ({int(porcentaje * 100)}%)...")
-                            
-                            df_temp = pd.DataFrame(lista_resultados)
-                            placeholder_tabla.dataframe(df_temp.tail(20), use_container_width=True)
-
-                    if lista_resultados:
-                        df_resultado = pd.DataFrame(lista_resultados)
-                        st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
-                        placeholder_tabla.dataframe(df_resultado, use_container_width=True)
-
-                        nombre_excel = "Reporte_Masivo_Master_Definitivo.xlsx"
-                        df_resultado.to_excel(nombre_excel, index=False)
-
-                        with open(nombre_excel, "rb") as f:
-                            st.download_button(
-                                label="📥 Descargar Excel Maestro Definitivo",
-                                data=f, file_name=nombre_excel,
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
-                    else:
-                        st.error("No se pudieron capturar datos de los archivos.")
+                    with open(nombre_excel, "rb") as f:
+                        st.download_button(
+                            label="📥 Descargar Excel Maestro Multimes",
+                            data=f, file_name=nombre_excel,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
                 else:
-                    st.warning("No se encontraron PDFs en el archivo ZIP.")
-    else:
-        st.info("Sube tu archivo .ZIP con los reportes para comenzar.")
+                    st.error("No se pudieron capturar datos de los archivos.")
+            else:
+                st.warning("La carpeta indicada no contiene archivos PDF.")
+        else:
+            st.error("La ruta de la carpeta especificada no existe en el equipo. Verifica la ruta.")
