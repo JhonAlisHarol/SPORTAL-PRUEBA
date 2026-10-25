@@ -9,7 +9,7 @@ import streamlit as st
 st.set_page_config(page_title="Centro de Procesamiento S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Sistema Integral de Procesamiento S.PORTAL")
-st.write("Herramienta avanzada: Procesamiento masivo con extracción real y visualización en vivo.")
+st.write("Herramienta avanzada: Procesamiento masivo con extracción de datos reales optimizada.")
 
 modo = st.sidebar.selectbox(
     "Selecciona el Modulo de Trabajo:",
@@ -98,10 +98,10 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO CON EXTRACCIÓN REAL Y VISTA EN VIVO
+# MODULO 2: PROCESADOR MASIVO CON EXTRACCIÓN ROBUSTA EN VIVO
 # =========================================================================
 else:
-    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Datos Reales)")
+    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Optimizada)")
     
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
@@ -121,7 +121,7 @@ else:
     if archivo_zip:
         st.info(f"Paquete detectado: {archivo_zip.name} ({round(archivo_zip.size / (1024*1024), 2)} MB).")
         
-        if st.button("🚀 Iniciar Procesamiento Masivo Real"):
+        if st.button("🚀 Iniciar Procesamiento Masivo Robusto"):
             with tempfile.TemporaryDirectory() as temp_dir:
                 ruta_zip = os.path.join(temp_dir, "paquete.zip")
                 
@@ -145,7 +145,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Leyendo datos reales...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo contenido real...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -164,7 +164,7 @@ else:
                             "Fecha 4": "N/A", "Hora 4": "N/A", "Reporte 4": "N/A"
                         }
 
-                        # 1. Incidente desde el nombre del archivo como base segura
+                        # 1. Obtener incidente desde el nombre del archivo
                         match_arch = re.search(r'(P\d{10,12})', nombre_original)
                         if match_arch:
                             datos["Incidente"] = match_arch.group(1)
@@ -178,47 +178,37 @@ else:
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-                            # 2. Buscar código de incidente en el texto interno
+                            # 2. Buscar incidente en el texto si existe
                             match_inc = re.search(r'(P\d{10,12})', texto_completo)
                             if match_inc:
                                 datos["Incidente"] = match_inc.group(1)
 
-                            # 3. Extracción de Tipo, Subtipo, Zona, Ubicación y Operador basados en la estructura real
-                            for idx, linea in enumerate(lineas):
+                            # 3. Extracción robusta de líneas útiles para Tipo y Subtipo
+                            lineas_utiles = []
+                            for linea in lineas:
                                 linea_up = linea.upper()
 
-                                # Operador
+                                # Detectar Operador
                                 for op in ops:
                                     if op in linea_up:
                                         datos["Operador"] = op
 
-                                # Zona
+                                # Detectar Zona
                                 if (re.search(r'\b\d{0,2}[A-Z]{1,3}\b', linea) and len(linea) <= 15) and ("ZP" in linea_up or "ZF" in linea_up or "ZONA" in linea_up):
                                     datos["Zona"] = linea
 
-                                # Coordenadas / Ubicación
+                                # Detectar Coordenadas
                                 if "COORDENADAS" in linea_up or "XY" in linea_up:
                                     datos["Ubicación"] = linea
-                                    if idx + 1 < len(lineas) and ("(" in lineas[idx+1] or ")" in lineas[idx+1]):
-                                        datos["Ubicación"] += " " + lineas[idx+1]
 
-                                # Tipo y Subtipo a partir de la línea del incidente
-                                if datos["Incidente"] in linea:
-                                    if idx + 1 < len(lineas) and datos["Tipo"] == "N/A":
-                                        datos["Tipo"] = lineas[idx + 1]
-                                    if idx + 2 < len(lineas) and datos["Subtipo"] == "N/A":
-                                        datos["Subtipo"] = lineas[idx + 2]
+                                # Acumular texto descriptivo real del expediente
+                                if not re.search(r'P\d{10,12}', linea) and "S.PORTAL" not in linea_up and "PAGINA" not in linea_up and "CENTRO" not in linea_up and "OPERACIÓN" not in linea_up and len(linea) > 3:
+                                    lineas_utiles.append(linea)
 
-                            # Si no se asignó por coincidencia exacta, tomar líneas descriptivas válidas del encabezado
-                            if datos["Tipo"] == "N/A" and len(lineas) > 2:
-                                for l in lineas:
-                                    if not re.search(r'P\d{10,12}', l) and "S.PORTAL" not in l.upper() and "PAGINA" not in l.upper() and "CENTRO" not in l.upper() and len(l) > 3:
-                                        if datos["Tipo"] == "N/A":
-                                            datos["Tipo"] = l
-                                            continue
-                                        elif datos["Subtipo"] == "N/A":
-                                            datos["Subtipo"] = l
-                                            break
+                            if len(lineas_utiles) > 0:
+                                datos["Tipo"] = lineas_utiles[0]
+                            if len(lineas_utiles) > 1:
+                                datos["Subtipo"] = lineas_utiles[1]
 
                             # 4. Fechas, horas y bitácoras de reportes (1 al 4)
                             patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
@@ -248,7 +238,7 @@ else:
 
                         lista_resultados.append(datos)
 
-                        # Actualización en vivo de la tabla en pantalla y barra de progreso
+                        # Actualización en vivo de la tabla en pantalla y barra de progreso cada 50 archivos
                         if i % 50 == 0 or i == total_archivos - 1:
                             porcentaje = (i + 1) / total_archivos
                             barra_progreso.progress(porcentaje)
