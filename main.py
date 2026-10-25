@@ -144,6 +144,23 @@ else:
                     lista_resultados = []
 
                     for i, (ruta_pdf, nombre_original) in enumerate(archivos_pdf):
+                        # Estructura base garantizada utilizando el nombre del archivo
+                        datos = {
+                            "Archivo": nombre_original,
+                            "Incidente": "S/N", "Tipo": "N/A", "Subtipo": "N/A", "Ubicación": "N/A", "Zona": "N/A", "Operador": "N/A",
+                            "Fecha Creación": "N/A", "Hora Creación": "N/A",
+                            "Fecha 1": "N/A", "Hora 1": "N/A", "Reporte 1": "N/A",
+                            "Fecha 2": "N/A", "Hora 2": "N/A", "Reporte 2": "N/A",
+                            "Fecha 3": "N/A", "Hora 3": "N/A", "Reporte 3": "N/A",
+                            "Fecha 4": "N/A", "Hora 4": "N/A", "Reporte 4": "N/A"
+                        }
+
+                        # Obtener el incidente del nombre del archivo de inmediato
+                        match_arch = re.search(r'(P\d{10,12})', nombre_original)
+                        if match_arch:
+                            datos["Incidente"] = match_arch.group(1)
+
+                        # Intentar leer el contenido interno del PDF de forma segura
                         try:
                             reader = PdfReader(ruta_pdf)
                             texto_completo = ""
@@ -151,23 +168,9 @@ else:
                                 t = pagina.extract_text()
                                 if t: texto_completo += t + "\n"
 
-                            datos = {
-                                "Archivo": nombre_original,
-                                "Incidente": "", "Tipo": "", "Subtipo": "", "Ubicación": "N/A", "Zona": "N/A", "Operador": "N/A",
-                                "Fecha Creación": "", "Hora Creación": "",
-                                "Fecha 1": "", "Hora 1": "", "Reporte 1": "",
-                                "Fecha 2": "", "Hora 2": "", "Reporte 2": "",
-                                "Fecha 3": "", "Hora 3": "", "Reporte 3": "",
-                                "Fecha 4": "", "Hora 4": "", "Reporte 4": ""
-                            }
-
                             match_inc = re.search(r'(P\d{10,12})', texto_completo)
                             if match_inc:
                                 datos["Incidente"] = match_inc.group(1)
-                            else:
-                                match_arch = re.search(r'(P\d{10,12})', nombre_original)
-                                if match_arch:
-                                    datos["Incidente"] = match_arch.group(1)
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
                             ops = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE GIERHART", "JOAQUIN CHI", "DALILA TREJOS", "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"]
@@ -182,7 +185,7 @@ else:
                                     if datos["Zona"] == "N/A":
                                         datos["Zona"] = linea
 
-                            if datos["Incidente"]:
+                            if datos["Incidente"] != "S/N":
                                 for idx, l in enumerate(lineas):
                                     if datos["Incidente"] in l:
                                         if idx + 1 < len(lineas): datos["Tipo"] = lineas[idx + 1]
@@ -205,12 +208,10 @@ else:
                                 datos[f"Fecha {idx_m}"] = marca["fecha"]
                                 datos[f"Hora {idx_m}"] = marca["hora"]
 
-                            if not datos["Incidente"]:
-                                datos["Incidente"] = "S/N"
-
-                            lista_resultados.append(datos)
                         except Exception:
-                            pass
+                            pass # Si el PDF interno da error al leerse, se conservan los datos base del archivo
+
+                        lista_resultados.append(datos)
 
                         # Actualizar barra y texto en tiempo real cada 50 archivos
                         if i % 50 == 0 or i == total_archivos - 1:
