@@ -73,9 +73,17 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                                     if k+1 < len(lineas) and re.search(r'\d{1,2}:\d{2}', lineas[k+1]):
                                         crea_val += " " + lineas[k+1]
 
+                            enlace_portal = f"http://c5-cad-app.c5.gob.pa/Tupa/PNPC5/Report/DetallesDelIncidente?Evento={inc_id}"
+
                             lista_registros.append({
-                                "Incidente": inc_id, "Tipo": tipo_val, "Subtipo": sub_val,
-                                "Ubicación": ubi_val, "Zona": zona_val, "Creación": crea_val, "Operador": op_val
+                                "Incidente": inc_id, 
+                                "Tipo": tipo_val, 
+                                "Subtipo": sub_val,
+                                "Ubicación": ubi_val, 
+                                "Zona": zona_val, 
+                                "Creación": crea_val, 
+                                "Operador": op_val,
+                                "Enlace S.PORTAL": enlace_portal
                             })
                         i += 1
                     barra.progress((idx + 1) / total_paginas)
@@ -84,7 +92,7 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
 
                 if lista_registros:
                     df_cons = pd.DataFrame(lista_registros).drop_duplicates(subset=["Incidente"])
-                    st.success(f"¡Extracción completada! Se encontraron {len(df_cons)} registros únicos.")
+                    st.success(f"¡Extracción completada! Se encontraron {len(df_cons)} registros únicos con sus enlaces.")
                     st.dataframe(df_cons, use_container_width=True)
 
                     nombre_out = "Reporte_Consolidado_Mes.xlsx"
@@ -106,7 +114,7 @@ else:
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
         "Fecha Creación", "Hora Creación", "Fecha 1", "Hora 1", "Reporte 1",
-        "Fecha 2", "Hora 2", "Reporte 2", "Fecha 3", "Hora 3", "Reporte 3", "Fecha 4", "Hora 4", "Reporte 4"
+        "Fecha 2", "Hora 2", "Reporte 2", "Fecha 3", "Hora 3", "Reporte 3", "Fecha 4", "Hora 4", "Reporte 4", "Enlace S.PORTAL"
     ]
     
     placeholder_tabla = st.empty()
@@ -114,7 +122,7 @@ else:
     st.markdown("---")
 
     archivo_zip = st.file_uploader(
-        "Sube tu paquete comprimido (.zip) con los expedientes individuales:", 
+        "Sube tu paquete comprimido (.zip) con los expedientes individuales (recuerda mantenerlo bajo los 200MB):", 
         type=["zip"]
     )
 
@@ -159,7 +167,9 @@ else:
                         if match_arch:
                             incidente_val = match_arch.group(1)
 
-                        # Estructura base mapeada exactamente al formato oficial observado en el C5
+                        enlace_portal = f"http://c5-cad-app.c5.gob.pa/Tupa/PNPC5/Report/DetallesDelIncidente?Evento={incidente_val}"
+
+                        # Estructura base mapeada exactamente al formato oficial observado en el C5 con su Enlace
                         datos = {
                             "Archivo": nombre_original,
                             "Incidente": incidente_val,
@@ -173,7 +183,8 @@ else:
                             "Fecha 1": "01/01/2026", "Hora 1": "00:05:00", "Reporte 1": f"Recepción y despacho inicial de emergencia para el incidente {incidente_val}",
                             "Fecha 2": "01/01/2026", "Hora 2": "00:15:00", "Reporte 2": "Unidad en ruta hacia la ubicación coordinada",
                             "Fecha 3": "01/01/2026", "Hora 3": "00:30:00", "Reporte 3": "Atención en sitio y control de la situación",
-                            "Fecha 4": "01/01/2026", "Hora 4": "01:00:00", "Reporte 4": "Finalización y cierre de expediente operativo"
+                            "Fecha 4": "01/01/2026", "Hora 4": "01:00:00", "Reporte 4": "Finalización y cierre de expediente operativo",
+                            "Enlace S.PORTAL": enlace_portal
                         }
 
                         # Lectura de texto interna para refinar tipo/subtipo si el PDF lo permite
@@ -186,7 +197,6 @@ else:
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
                             
-                            # Si detecta líneas con contenido real, las aprovecha para Tipo y Subtipo
                             if len(lineas) > 1:
                                 for l in lineas:
                                     if not patron_inc.search(l) and "S.PORTAL" not in l.upper() and "911" not in l and len(l) > 3:
