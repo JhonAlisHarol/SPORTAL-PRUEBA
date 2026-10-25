@@ -106,10 +106,10 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA POR ETIQUETAS)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN FIABLE C5)
 # =========================================================================
 else:
-    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Exacta C5)")
+    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Fiable C5)")
     
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo datos exactos...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo Tipo, Subtipo y datos reales...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -187,34 +187,23 @@ else:
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-                            # Análisis inteligente por contenido de líneas para evitar cruces
+                            # Extracción directa basada en la estructura original comprobada de las líneas
                             for idx, linea in enumerate(lineas):
-                                linea_up = linea.upper()
-                                
-                                # Detectar Ubicación (coordenadas o direcciones físicas)
-                                if "COORDENADAS" in linea_up or "DIRECCION" in linea_up or "UBICACION" in linea_up:
-                                    ubi_texto = linea
-                                    if idx + 1 < len(lineas) and ("(" in lineas[idx+1] or ")" in lineas[idx+1] or len(lineas[idx+1]) < 25):
-                                        ubi_texto += " " + lineas[idx+1]
-                                    datos["Ubicación"] = ubi_texto
-
-                                # Detectar Zona
-                                if re.search(r'\b\d{1,2}[A-Z]{1,3}\b', linea) and ("ZP" in linea_up or "ZF" in linea_up or "ZONA" in linea_up) and len(lineas[idx]) <= 15:
-                                    datos["Zona"] = linea
-
-                                # Detectar Operador (nombres en mayúsculas comunes de operadores C5)
-                                if any(apellido in linea_up for apellido in ["LEOPOLDO", "MARIA", "ARQUIMEDES", "CASAIS", "RODRIGUEZ", "GUTIERREZ", "BROWN", "SUCRE", "GONZALEZ"]):
-                                    if len(linea) < 35 and not "REPORTE" in linea_up:
-                                        datos["Operador"] = linea
-
-                            # Si no encontró tipo/subtipo por posición fija, tomamos las líneas principales del encabezado
-                            for idx, linea in enumerate(lineas[:10]):
                                 if incidente_val in linea:
                                     if idx + 1 < len(lineas): datos["Tipo"] = lineas[idx + 1]
                                     if idx + 2 < len(lineas): datos["Subtipo"] = lineas[idx + 2]
+                                    if idx + 3 < len(lineas): datos["Ubicación"] = lineas[idx + 3]
+                                    if idx + 4 < len(lineas): datos["Zona"] = lineas[idx + 4]
+                                    if idx + 5 < len(lineas): datos["Operador"] = lineas[idx + 5]
                                     break
 
-                            # Extracción precisa de marcas de tiempo y bitácoras
+                            # Búsqueda de respaldo por si el tipo viene en otra línea cercana
+                            if datos["Tipo"] == "N/A" or len(datos["Tipo"]) < 2:
+                                for l in lineas[:15]:
+                                    if not patron_inc.search(l) and "S.PORTAL" not in l.upper() and "911" not in l and len(l) > 3:
+                                        datos["Tipo"] = l
+                                        break
+
                             patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
                             matches = list(re.finditer(patron_fh, texto_completo))
                             
@@ -246,7 +235,7 @@ else:
                                 frag = re.sub(r'^(Cierre Incidente|Comentario Del Usuario|Reporte).*?\n', '', frag, flags=re.IGNORECASE).strip()
                                 frag = re.sub(r'\s+', ' ', frag).strip()
                                 
-                                datos[f"Reporte {idx_m + 1}"] = (frag[:300] if len(frag) > 2 else "Seguimiento de emergencia")
+                                datos[f"Reporte {idx_m + 1}"] = (frag[:300] if len(frag) > 2 else "Seguimiento operativo")
 
                         except Exception:
                             pass
@@ -266,12 +255,12 @@ else:
                         st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        nombre_excel = "Reporte_Masivo_Master_Exacto.xlsx"
+                        nombre_excel = "Reporte_Masivo_Master_Final.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
                             st.download_button(
-                                label="📥 Descargar Excel Maestro Exacto",
+                                label="📥 Descargar Excel Maestro Final",
                                 data=f, file_name=nombre_excel,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
