@@ -106,10 +106,10 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN REAL DESDE EL PDF)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN PRECISA DE BITÁCORAS)
 # =========================================================================
 else:
-    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Real C5)")
+    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Precisa C5)")
     
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo información real...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo información limpia...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -187,7 +187,6 @@ else:
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-                            # Extracción inteligente basada en las líneas del PDF
                             for idx, linea in enumerate(lineas):
                                 if incidente_val in linea:
                                     if idx + 1 < len(lineas): datos["Tipo"] = lineas[idx + 1]
@@ -213,8 +212,13 @@ else:
                                 if idx_m + 1 > 4: break
                                 inicio = marcas_tiempo[idx_m]["pos"] + len(f"{marcas_tiempo[idx_m]['fecha']} {marcas_tiempo[idx_m]['hora']}")
                                 fin = marcas_tiempo[idx_m + 1]["pos"] if idx_m + 1 < len(marcas_tiempo) else len(texto_completo)
-                                frag = texto_completo[inicio:fin].replace("Comentario Del Usuario", "").replace("\n", " ").strip()
-                                datos[f"Reporte {idx_m + 1}"] = frag[:400]
+                                
+                                # Limpieza estricta de encabezados basura en los reportes
+                                frag = texto_completo[inicio:fin]
+                                frag = re.sub(r'^(Cierre Incidente|Comentario Del Usuario|Reporte).*?\n', '', frag, flags=re.IGNORECASE).strip()
+                                frag = frag.replace("\n", " ").strip()
+                                
+                                datos[f"Reporte {idx_m + 1}"] = (frag[:400] if frag else "N/A")
 
                         except Exception:
                             pass
@@ -234,12 +238,12 @@ else:
                         st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        nombre_excel = "Reporte_Masivo_Master_Real.xlsx"
+                        nombre_excel = "Reporte_Masivo_Master_Limpio.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
                             st.download_button(
-                                label="📥 Descargar Excel Maestro con Datos Reales",
+                                label="📥 Descargar Excel Maestro Limpio",
                                 data=f, file_name=nombre_excel,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
