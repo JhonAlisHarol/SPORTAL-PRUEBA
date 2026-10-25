@@ -9,7 +9,7 @@ import streamlit as st
 st.set_page_config(page_title="Centro de Procesamiento S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Sistema Integral de Procesamiento S.PORTAL")
-st.write("Herramienta avanzada: Procesamiento masivo optimizado con barra de progreso en tiempo real.")
+st.write("Herramienta avanzada: Procesamiento masivo de expedientes individuales con captura de datos completa.")
 
 modo = st.sidebar.selectbox(
     "Selecciona el Modulo de Trabajo:",
@@ -113,7 +113,7 @@ else:
     if archivo_zip:
         st.info(f"Paquete detectado: {archivo_zip.name} ({round(archivo_zip.size / (1024*1024), 2)} MB).")
         
-        if st.button("🚀 Iniciar Procesamiento Masivo con Barra de Progreso"):
+        if st.button("🚀 Iniciar Procesamiento Masivo con Captura Real"):
             with tempfile.TemporaryDirectory() as temp_dir:
                 ruta_zip = os.path.join(temp_dir, "paquete.zip")
                 
@@ -137,9 +137,8 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Iniciando captura masiva...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo información...")
                     
-                    # Elementos visuales de la barra de tiempo y progreso
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
                     lista_resultados = []
@@ -155,6 +154,7 @@ else:
                             "Fecha 4": "N/A", "Hora 4": "N/A", "Reporte 4": "N/A"
                         }
 
+                        # 1. Obtener incidente del nombre o texto
                         match_arch = re.search(r'(P\d{10,12})', nombre_original)
                         if match_arch:
                             datos["Incidente"] = match_arch.group(1)
@@ -162,57 +162,71 @@ else:
                         try:
                             reader = PdfReader(ruta_pdf)
                             texto_completo = ""
-                            for pagina in reader.pages[:3]:
+                            for pagina in reader.pages:
                                 t = pagina.extract_text()
                                 if t: texto_completo += t + "\n"
 
+                            lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
+
+                            # Buscar código de incidente si está en el texto
                             match_inc = re.search(r'(P\d{10,12})', texto_completo)
                             if match_inc:
                                 datos["Incidente"] = match_inc.group(1)
 
-                            lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
-                            ops = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE GIERHART", "JOAQUIN CHI", "DALILA TREJOS", "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"]
-
-                            for linea in lineas:
+                            # Captura inteligente basada en líneas clave de S.PORTAL
+                            for idx, linea in enumerate(lineas):
                                 linea_up = linea.upper()
+                                
+                                # Tipo y Subtipo (usualmente ubicados justo después del encabezado del incidente o etiquetas)
+                                if datos["Incidente"] in linea and idx + 2 < len(lineas):
+                                    if datos["Tipo"] == "N/A": datos["Tipo"] = lineas[idx + 1]
+                                    if datos["Subtipo"] == "N/A": datos["Subtipo"] = lineas[idx + 2]
+
+                                # Coordenadas / Ubicación
+                                if "COORDENADAS" in linea_up or "XY" in linea_up:
+                                    datos["Ubicación"] = linea
+                                    if idx + 1 < len(lineas) and ("(" in lineas[idx+1] or ")" in lineas[idx+1]):
+                                        datos["Ubicación"] += " " + lineas[idx+1]
+
+                                # Zona
+                                if ("ZP" in linea_up or "ZF" in linea_up or "ZONA" in linea_up) and len(linea) <= 15:
+                                    datos["Zona"] = linea
+
+                                # Operador
+                                ops = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE GIERHART", "JOAQUIN CHI", "DALILA TREJOS", "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"]
                                 for op in ops:
                                     if op in linea_up:
                                         datos["Operador"] = op
-                                        break
-                                if (re.search(r'\b\d{0,2}[A-Z]{1,3}\b', linea) and len(linea) <= 6) and ("ZP" in linea_up or "ZF" in linea_up or "ZONA" in linea_up):
-                                    if datos["Zona"] == "N/A":
-                                        datos["Zona"] = linea
 
-                            if datos["Incidente"] != "S/N":
-                                for idx, l in enumerate(lineas):
-                                    if datos["Incidente"] in l:
-                                        if idx + 1 < len(lineas): datos["Tipo"] = lineas[idx + 1]
-                                        if idx + 2 < len(lineas): datos["Subtipo"] = lineas[idx + 2]
-                                        break
-
-                            match_coords = re.search(r'(COORDENADAS\s+XY\s*\([^)]+\))', texto_completo, re.IGNORECASE)
-                            if match_coords:
-                                datos["Ubicación"] = match_coords.group(1).replace("\n", " ")
-
+                            # Fechas, horas y bitácoras de reportes (1 al 4)
                             patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
                             matches = list(re.finditer(patron_fh, texto_completo))
+                            
                             if matches:
                                 datos["Fecha Creación"] = matches[0].group(1)
                                 datos["Hora Creación"] = matches[0].group(2)
 
+                            # Marcas de tiempo para bitácoras del 1 al 4
                             marcas_tiempo = [{"fecha": m.group(1), "hora": m.group(2), "pos": m.start()} for m in matches if not (m.group(1) == datos["Fecha Creación"] and m.group(2) == datos["Hora Creación"] and len(matches) == 1)]
                             
                             for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
                                 datos[f"Fecha {idx_m}"] = marca["fecha"]
                                 datos[f"Hora {idx_m}"] = marca["hora"]
 
+                            for idx_m in range(len(marcas_tiempo)):
+                                if idx_m + 1 > 4: break
+                                inicio = marcas_tiempo[idx_m]["pos"] + len(f"{marcas_tiempo[idx_m]['fecha']} {marcas_tiempo[idx_m]['hora']}")
+                                fin = marcas_tiempo[idx_m + 1]["pos"] if idx_m + 1 < len(marcas_tiempo) else len(texto_completo)
+                                frag = texto_completo[inicio:fin].replace("Comentario Del Usuario", "").replace("\n", " ").strip()
+                                if datos["Operador"] != "N/A": frag = frag.replace(datos["Operador"], "").strip()
+                                datos[f"Reporte {idx_m + 1}"] = frag[:300] # Limite prudente para celdas de Excel
+
                         except Exception:
                             pass
 
                         lista_resultados.append(datos)
 
-                        # Actualización de la barra de progreso y texto dinámico cada 50 archivos
-                        if i % 50 == 0 or i == total_archivos - 1:
+                        if i % 100 == 0 or i == total_archivos - 1:
                             porcentaje = (i + 1) / total_archivos
                             barra_progreso.progress(porcentaje)
                             texto_estado.text(f"⏳ Procesando expediente {i + 1:,} de {total_archivos:,} ({int(porcentaje * 100)}%)...")
