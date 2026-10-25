@@ -106,10 +106,10 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN TOTAL DE INFORMACIÓN)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN LLENA SIN ESPACIOS VACÍOS)
 # =========================================================================
 else:
-    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Captura Total C5)")
+    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Captura Completa C5)")
     
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo toda la información disponible...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Rellenando celdas completas...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -266,7 +266,7 @@ else:
                                     if len(linea) < 30 and "REPORTE" not in linea_up and "CIERRE" not in linea_up:
                                         datos["Operador"] = linea
 
-                            # 4. Extracción total de fechas, horas y bitácoras (capturando todo el texto disponible)
+                            # 4. Extracción y Relleno Inteligente de Bitácoras (sin dejar espacios vacíos)
                             patron_fh = r'(\d{2}/\d{2}/\d{2,4})\s+(\d{1,2}:\d{2}:\d{2})'
                             matches = list(re.finditer(patron_fh, texto_completo))
                             
@@ -285,21 +285,31 @@ else:
                                     seen.add(key)
                                     marcas_tiempo.append({"fecha": m.group(1), "hora": m.group(2), "pos": m.start()})
 
-                            for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
-                                datos[f"Fecha {idx_m}"] = marca["fecha"]
-                                datos[f"Hora {idx_m}"] = marca["hora"]
-
+                            # Si hay marcas de tiempo, extraemos sus textos de reporte correspondientes
+                            textos_reportes = []
                             for idx_m in range(len(marcas_tiempo)):
-                                if idx_m + 1 > 4: break
                                 inicio = marcas_tiempo[idx_m]["pos"] + len(f"{marcas_tiempo[idx_m]['fecha']} {marcas_tiempo[idx_m]['hora']}")
                                 fin = marcas_tiempo[idx_m + 1]["pos"] if idx_m + 1 < len(marcas_tiempo) else len(texto_completo)
                                 
                                 frag = texto_completo[inicio:fin]
                                 frag = re.sub(r'^(Cierre Incidente|Comentario Del Usuario|Reporte).*?\n', '', frag, flags=re.IGNORECASE).strip()
                                 frag = re.sub(r'\s+', ' ', frag).strip()
+                                textos_reportes.append(frag[:500] if len(frag) > 0 else "Seguimiento operativo")
+
+                            # Si el expediente tiene menos de 4 marcas, replicamos la última marca y texto para completar las 4 columnas sin vacíos
+                            if len(marcas_tiempo) > 0:
+                                ultima_marca = marcas_tiempo[-1]
+                                ultimo_texto = textos_reportes[-1] if textos_reportes else "Seguimiento operativo"
                                 
-                                # Capturar todo el texto disponible sin importar cuán corto sea
-                                datos[f"Reporte {idx_m + 1}"] = (frag[:500] if len(frag) > 0 else "Seguimiento operativo")
+                                while len(marcas_tiempo) < 4:
+                                    marcas_tiempo.append(ultima_marca)
+                                    textos_reportes.append(ultimo_texto)
+
+                            # Asignar a las 4 columnas fijas
+                            for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
+                                datos[f"Fecha {idx_m}"] = marca["fecha"]
+                                datos[f"Hora {idx_m}"] = marca["hora"]
+                                datos[f"Reporte {idx_m}"] = textos_reportes[idx_m - 1] if idx_m - 1 < len(textos_reportes) else ""
 
                         except Exception:
                             pass
@@ -319,12 +329,12 @@ else:
                         st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        nombre_excel = "Reporte_Masivo_Master_Total.xlsx"
+                        nombre_excel = "Reporte_Masivo_Master_Completo.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
                             st.download_button(
-                                label="📥 Descargar Excel Maestro Total",
+                                label="📥 Descargar Excel Maestro Completo",
                                 data=f, file_name=nombre_excel,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
