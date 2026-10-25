@@ -106,7 +106,7 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA Y UNIFICADA)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA Y LIMPIA)
 # =========================================================================
 else:
     st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Estructura Oficial C5)")
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Unificando Tipo y Subtipo correctamente...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Procesando con precisión...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -187,7 +187,7 @@ else:
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-                            # 1. Extracción exacta y robusta entre el Evento y Coordenadas
+                            # 1. Extracción exacta entre Evento y Coordenadas
                             idx_inc = -1
                             idx_coord = -1
                             
@@ -205,22 +205,29 @@ else:
                                 if len(intermedias) >= 2:
                                     texto_unido = " ".join(intermedias)
                                     
-                                    # Limpieza y unificación estricta para evitar divisiones incorrectas
-                                    if "Actitud" in texto_unido and "Sospechosa" in texto_unido:
+                                    # Reglas limpias para tipos compuestos comunes y sin subtipos separados
+                                    if "Actitud Sospechosa" in texto_unido or ("Actitud" in intermedias[0] and "Sospechosa" in intermedias[1]):
                                         datos["Tipo"] = "Actitud Sospechosa"
+                                        datos["Subtipo"] = "N/A"
+                                    elif "Alarma Activada" in texto_unido or ("Alarma" in intermedias[0] and "Activada" in intermedias[1]):
+                                        datos["Tipo"] = "Alarma Activada"
                                         datos["Subtipo"] = "N/A"
                                     elif "Violencia de Genero" in texto_unido:
                                         datos["Tipo"] = "Violencia de Genero"
-                                        datos["Subtipo"] = texto_unido.replace("Violencia de Genero", "").strip() or "Maltrato"
+                                        sub_resto = texto_unido.replace("Violencia de Genero", "").strip()
+                                        datos["Subtipo"] = sub_resto if sub_resto else "Violencia Doméstica"
                                     elif "Alteracion de la Convivencia Pacifica" in texto_unido:
                                         datos["Tipo"] = "Alteracion de la Convivencia Pacifica"
-                                        datos["Subtipo"] = texto_unido.replace("Alteracion de la Convivencia Pacifica", "").strip() or "Alteración del Orden"
+                                        sub_resto = texto_unido.replace("Alteracion de la Convivencia Pacifica", "").strip()
+                                        datos["Subtipo"] = sub_resto if sub_resto else "Riña y Escándalo"
                                     elif "Alteracion de la Convivencia" in texto_unido:
                                         datos["Tipo"] = "Alteracion de la Convivencia"
-                                        datos["Subtipo"] = texto_unido.replace("Alteracion de la Convivencia", "").strip() or "Pacifica"
+                                        sub_resto = texto_unido.replace("Alteracion de la Convivencia", "").strip()
+                                        datos["Subtipo"] = sub_resto if sub_resto else "Pacifica"
                                     elif "Arma de Fuego" in texto_unido:
                                         datos["Tipo"] = "Arma de Fuego"
-                                        datos["Subtipo"] = "Posesión Ilegal"
+                                        sub_resto = texto_unido.replace("Arma de Fuego", "").strip()
+                                        datos["Subtipo"] = sub_resto if sub_resto else "Posesión Ilegal"
                                     else:
                                         mitad = max(1, len(intermedias) // 2)
                                         datos["Tipo"] = " ".join(intermedias[:mitad])
