@@ -106,10 +106,10 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN FILTRADA Y EXACTA)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN UNIFICADA DE TIPO Y SUBTIPO)
 # =========================================================================
 else:
-    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Filtrada C5)")
+    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Unificada C5)")
     
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Aplicando filtro inteligente...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo Tipo y Subtipo unificados...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -187,26 +187,22 @@ else:
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-                            # 1. Extracción inteligente y limpia de Tipo y Subtipo filtrando ruido
-                            candidatos_tipo = []
+                            # 1. Extracción unificada y robusta de Tipo y Subtipo
                             for idx, linea in enumerate(lineas):
                                 if incidente_val in linea:
-                                    for offset in range(1, 8):
-                                        if idx + offset < len(lineas):
-                                            l_sig = lineas[idx + offset]
-                                            # Descartar fechas, coordenadas, zonas o líneas muy cortas/números
-                                            if not re.search(r'\d{2}/\d{2}/\d{4}', l_sig) and \
-                                               not "COORDENADAS" in l_sig.upper() and \
-                                               not re.search(r'\b\d{1,2}[A-Z]{1,3}\b', l_sig) and \
-                                               not l_sig.startswith("P20") and \
-                                               len(l_sig) > 2:
-                                                candidatos_tipo.append(l_sig)
+                                    t_candidato = lineas[idx + 1] if idx + 1 < len(lineas) else "N/A"
+                                    s_candidato = lineas[idx + 2] if idx + 2 < len(lineas) else "N/A"
+                                    
+                                    # Unir si el tipo se corta con preposiciones/artículos (ej. "Arma de" + "Fuego")
+                                    palabras_corte = ["de", "la", "del", "con", "sin", "en", "a", "el"]
+                                    if t_candidato.split() and t_candidato.split()[-1].lower() in palabras_corte:
+                                        if idx + 3 < len(lineas):
+                                            t_candidato = f"{t_candidato} {s_candidato}"
+                                            s_candidato = lineas[idx + 3]
+                                            
+                                    datos["Tipo"] = t_candidato
+                                    datos["Subtipo"] = s_candidato
                                     break
-
-                            if len(candidatos_tipo) >= 1:
-                                datos["Tipo"] = candidatos_tipo[0]
-                            if len(candidatos_tipo) >= 2:
-                                datos["Subtipo"] = candidatos_tipo[1]
 
                             # 2. Búsqueda específica y limpia para Ubicación, Zona y Operador
                             for idx, linea in enumerate(lineas):
@@ -277,12 +273,12 @@ else:
                         st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        nombre_excel = "Reporte_Masivo_Master_Corregido.xlsx"
+                        nombre_excel = "Reporte_Masivo_Master_Perfecto.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
                             st.download_button(
-                                label="📥 Descargar Excel Maestro Corregido",
+                                label="📥 Descargar Excel Maestro Perfecto",
                                 data=f, file_name=nombre_excel,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
