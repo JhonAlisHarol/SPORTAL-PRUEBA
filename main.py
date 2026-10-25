@@ -6,8 +6,6 @@ import pandas as pd
 from pypdf import PdfReader
 import streamlit as st
 
-# Configuración automática para permitir la carga de archivos ZIP pesados (hasta 2 GB)
-st.set_option("server.maxUploadSize", 2048)
 st.set_page_config(page_title="Centro de Procesamiento S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Sistema Integral de Procesamiento S.PORTAL")
@@ -28,7 +26,7 @@ st.markdown("---")
 # =========================================================================
 if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
     st.header("📄 Extractor de Listados Consolidados Masivos")
-    st.write("Sube tu archivo PDF consolidado mensual para extraer automáticamente todos los incidentes y sus enlaces.")
+    st.write("Sube tu archivo PDF consolidado general para extraer automáticamente todos los incidentes y sus enlaces.")
 
     archivo_consolidado = st.file_uploader("Sube el PDF consolidado general:", type=["pdf"], key="pdf_con")
 
@@ -108,7 +106,7 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR REAL (CON SOPORTE DE ARCHIVOS GRANDES)
+# MODULO 2: PROCESADOR MASIVO TABULAR REAL
 # =========================================================================
 else:
     st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Masiva C5)")
@@ -124,7 +122,7 @@ else:
     st.markdown("---")
 
     archivo_zip = st.file_uploader(
-        "Sube tu paquete comprimido (.zip) con los expedientes individuales (Soporta archivos pesados):", 
+        "Sube tu paquete comprimido (.zip) con los expedientes individuales:", 
         type=["zip"]
     )
 
