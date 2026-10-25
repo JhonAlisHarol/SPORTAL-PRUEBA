@@ -15,25 +15,25 @@ modo = st.sidebar.selectbox(
     "Selecciona el Modulo de Trabajo:",
     [
         "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)", 
-        "2. Procesador Masivo de Alto Volumen (+30k PDFs)"
+        "2. Procesador Masivo de Alto Volumen (Por Lotes ZIP)"
     ]
 )
 
 st.markdown("---")
 
 # =========================================================================
-# MODULO 1: PROCESADOR DE LISTADOS CONSOLIDADOS
+# MODULO 1: PROCESADOR DE LISTADOS CONSOLIDADOS (CON ENLACE S.PORTAL)
 # =========================================================================
 if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
     st.header("📄 Extractor de Listados Consolidados Masivos")
-    st.write("Sube tu archivo PDF consolidado mensual para extraer automáticamente todos los incidentes.")
+    st.write("Sube tu archivo PDF consolidado mensual para extraer automáticamente todos los incidentes y sus enlaces oficiales.")
 
     archivo_consolidado = st.file_uploader("Sube el PDF consolidado general:", type=["pdf"], key="pdf_con")
 
     if archivo_consolidado:
         st.info(f"Archivo cargado: {archivo_consolidado.name}. Listo para procesar.")
 
-        if st.button("🚀 Extraer Datos del Listado Consolidado"):
+        if st.button("🚀 Extraer Datos y Enlaces del Listado Consolidado"):
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
                 tmp.write(archivo_consolidado.getbuffer())
                 ruta_tmp = tmp.name
@@ -95,18 +95,18 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                     st.success(f"¡Extracción completada! Se encontraron {len(df_cons)} registros únicos con sus enlaces.")
                     st.dataframe(df_cons, use_container_width=True)
 
-                    nombre_out = "Reporte_Consolidado_Mes.xlsx"
+                    nombre_out = "Reporte_Consolidado_Con_Enlaces.xlsx"
                     df_cons.to_excel(nombre_out, index=False)
 
                     with open(nombre_out, "rb") as f:
-                        st.download_button("📥 Descargar Excel de Listado Consolidado", data=f, file_name=nombre_out, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                        st.download_button("📥 Descargar Excel Consolidado con Enlaces", data=f, file_name=nombre_out, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 else:
                     st.warning("No se detectaron códigos de incidente con el formato esperado.")
             except Exception as e:
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (CON ESTRUCTURA OFICIAL C5)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN DE INFORMACIÓN INTERNA)
 # =========================================================================
 else:
     st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Estructura C5 Oficial)")
@@ -114,7 +114,7 @@ else:
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
         "Fecha Creación", "Hora Creación", "Fecha 1", "Hora 1", "Reporte 1",
-        "Fecha 2", "Hora 2", "Reporte 2", "Fecha 3", "Hora 3", "Reporte 3", "Fecha 4", "Hora 4", "Reporte 4", "Enlace S.PORTAL"
+        "Fecha 2", "Hora 2", "Reporte 2", "Fecha 3", "Hora 3", "Reporte 3", "Fecha 4", "Hora 4", "Reporte 4"
     ]
     
     placeholder_tabla = st.empty()
@@ -122,7 +122,7 @@ else:
     st.markdown("---")
 
     archivo_zip = st.file_uploader(
-        "Sube tu paquete comprimido (.zip) con los expedientes individuales (recuerda mantenerlo bajo los 200MB):", 
+        "Sube tu paquete comprimido (.zip) con los expedientes individuales (menor a 200 MB):", 
         type=["zip"]
     )
 
@@ -167,9 +167,6 @@ else:
                         if match_arch:
                             incidente_val = match_arch.group(1)
 
-                        enlace_portal = f"http://c5-cad-app.c5.gob.pa/Tupa/PNPC5/Report/DetallesDelIncidente?Evento={incidente_val}"
-
-                        # Estructura base mapeada exactamente al formato oficial observado en el C5 con su Enlace
                         datos = {
                             "Archivo": nombre_original,
                             "Incidente": incidente_val,
@@ -183,11 +180,9 @@ else:
                             "Fecha 1": "01/01/2026", "Hora 1": "00:05:00", "Reporte 1": f"Recepción y despacho inicial de emergencia para el incidente {incidente_val}",
                             "Fecha 2": "01/01/2026", "Hora 2": "00:15:00", "Reporte 2": "Unidad en ruta hacia la ubicación coordinada",
                             "Fecha 3": "01/01/2026", "Hora 3": "00:30:00", "Reporte 3": "Atención en sitio y control de la situación",
-                            "Fecha 4": "01/01/2026", "Hora 4": "01:00:00", "Reporte 4": "Finalización y cierre de expediente operativo",
-                            "Enlace S.PORTAL": enlace_portal
+                            "Fecha 4": "01/01/2026", "Hora 4": "01:00:00", "Reporte 4": "Finalización y cierre de expediente operativo"
                         }
 
-                        # Lectura de texto interna para refinar tipo/subtipo si el PDF lo permite
                         try:
                             reader = PdfReader(ruta_pdf)
                             texto_completo = ""
@@ -207,7 +202,6 @@ else:
 
                         lista_resultados.append(datos)
 
-                        # Actualización en vivo de la tabla en pantalla y barra de progreso
                         if i % 100 == 0 or i == total_archivos - 1:
                             porcentaje = (i + 1) / total_archivos
                             barra_progreso.progress(porcentaje)
@@ -221,7 +215,7 @@ else:
                         st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        nombre_excel = "Reporte_Masivo_Master_30k.xlsx"
+                        nombre_excel = "Reporte_Masivo_Master_Lote.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
