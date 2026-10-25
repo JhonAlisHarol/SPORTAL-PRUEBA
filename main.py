@@ -106,7 +106,7 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA Y ROBUSTA)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA Y LIMPIA)
 # =========================================================================
 else:
     st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Estructura Oficial C5)")
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Procesando con precisión...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Procesando con celdas limpias...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -172,10 +172,10 @@ else:
                             "Incidente": incidente_val,
                             "Tipo": "N/A", "Subtipo": "N/A", "Ubicación": "N/A", "Zona": "N/A", "Operador": "N/A",
                             "Fecha Creación": "N/A", "Hora Creación": "N/A",
-                            "Fecha 1": "N/A", "Hora 1": "N/A", "Reporte 1": "N/A",
-                            "Fecha 2": "N/A", "Hora 2": "N/A", "Reporte 2": "N/A",
-                            "Fecha 3": "N/A", "Hora 3": "N/A", "Reporte 3": "N/A",
-                            "Fecha 4": "N/A", "Hora 4": "N/A", "Reporte 4": "N/A"
+                            "Fecha 1": "", "Hora 1": "", "Reporte 1": "",
+                            "Fecha 2": "", "Hora 2": "", "Reporte 2": "",
+                            "Fecha 3": "", "Hora 3": "", "Reporte 3": "",
+                            "Fecha 4": "", "Hora 4": "", "Reporte 4": ""
                         }
 
                         try:
@@ -234,7 +234,7 @@ else:
                                     datos["Tipo"] = intermedias[0]
                                     datos["Subtipo"] = "N/A"
 
-                            # 2. Búsqueda robusta y limpia exclusivamente para Coordenadas / Ubicación Real
+                            # 2. Búsqueda robusta para Coordenadas / Ubicación Real
                             for idx, linea in enumerate(lineas):
                                 linea_up = linea.upper()
                                 
@@ -255,7 +255,7 @@ else:
                                         datos["Ubicación"] = linea
                                         break
 
-                            # 3. Búsqueda específica y limpia para Zona y Operador
+                            # 3. Búsqueda para Zona y Operador
                             for idx, linea in enumerate(lineas):
                                 linea_up = linea.upper()
 
@@ -266,7 +266,7 @@ else:
                                     if len(linea) < 30 and "REPORTE" not in linea_up and "CIERRE" not in linea_up:
                                         datos["Operador"] = linea
 
-                            # 4. Extracción de fechas, horas y bitácoras (manenjando dinámicamente expedientes cortos)
+                            # 4. Extracción de fechas, horas y bitácoras dinámicas
                             patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
                             matches = list(re.finditer(patron_fh, texto_completo))
                             
