@@ -1,6 +1,7 @@
 import os
 import re
 import tempfile
+import time
 import zipfile
 import pandas as pd
 from pypdf import PdfReader
@@ -39,7 +40,12 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 reader = PdfReader(ruta_tmp)
                 total_paginas = len(reader.pages)
                 lista_registros = []
+                
+                # Barra de progreso para el Módulo 1 con indicador de tiempo
                 barra = st.progress(0)
+                tiempo_inicio_m1 = time.time()
+                estado_texto = st.empty()
+                
                 patron_fila = re.compile(r'(P\d{10,12})')
 
                 for idx, pagina in enumerate(reader.pages):
@@ -75,7 +81,17 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                                 "Ubicación": ubi_val, "Zona": zona_val, "Creación": crea_val, "Operador": op_val
                             })
                         i += 1
-                    barra.progress((idx + 1) / total_paginas)
+                    
+                    progreso = (idx + 1) / total_paginas
+                    barra.progress(progreso)
+                    
+                    # Cálculo de tiempo transcurrido y restante
+                    tiempo_actual = time.time()
+                    tiempo_transcurrido = tiempo_actual - tiempo_inicio_m1
+                    if progreso > 0:
+                        tiempo_total_estimado = tiempo_transcurrido / progreso
+                        tiempo_restante = max(0, tiempo_total_estimado - tiempo_transcurrido)
+                        estado_texto.text(f"Procesando página {idx + 1} de {total_paginas} ({int(progreso * 100)}%) — Transcurrido: {int(tiempo_transcurrido)}s | Restante aprox: {int(tiempo_restante)}s")
 
                 os.unlink(ruta_tmp)
 
@@ -113,7 +129,7 @@ else:
     if archivo_zip:
         st.info(f"Paquete detectado: {archivo_zip.name} ({round(archivo_zip.size / (1024*1024), 2)} MB).")
         
-        if st.button("🚀 Iniciar Procesamiento Masivo Seguro"):
+        if st.button("🚀 Iniciar Procesamiento Masivo con Barra de Tiempo"):
             with tempfile.TemporaryDirectory() as temp_dir:
                 ruta_zip = os.path.join(temp_dir, "paquete.zip")
                 
@@ -137,14 +153,15 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Procesando en vivo...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Iniciando captura masiva...")
                     
                     barra = st.progress(0)
                     estado_texto = st.empty()
                     lista_resultados = []
+                    
+                    tiempo_inicio = time.time()
 
                     for i, (ruta_pdf, nombre_original) in enumerate(archivos_pdf):
-                        # Estructura base garantizada utilizando el nombre del archivo
                         datos = {
                             "Archivo": nombre_original,
                             "Incidente": "S/N", "Tipo": "N/A", "Subtipo": "N/A", "Ubicación": "N/A", "Zona": "N/A", "Operador": "N/A",
@@ -155,12 +172,10 @@ else:
                             "Fecha 4": "N/A", "Hora 4": "N/A", "Reporte 4": "N/A"
                         }
 
-                        # Obtener el incidente del nombre del archivo de inmediato
                         match_arch = re.search(r'(P\d{10,12})', nombre_original)
                         if match_arch:
                             datos["Incidente"] = match_arch.group(1)
 
-                        # Intentar leer el contenido interno del PDF de forma segura
                         try:
                             reader = PdfReader(ruta_pdf)
                             texto_completo = ""
@@ -209,19 +224,25 @@ else:
                                 datos[f"Hora {idx_m}"] = marca["hora"]
 
                         except Exception:
-                            pass # Si el PDF interno da error al leerse, se conservan los datos base del archivo
+                            pass
 
                         lista_resultados.append(datos)
 
-                        # Actualizar barra y texto en tiempo real cada 50 archivos
+                        # Actualización de la barra y cálculo de tiempo en vivo cada 50 archivos
                         if i % 50 == 0 or i == total_archivos - 1:
                             progreso = (i + 1) / total_archivos
                             barra.progress(progreso)
-                            estado_texto.text(f"Procesando archivo {i + 1:,} de {total_archivos:,} ({int(progreso * 100)}%)...")
+                            
+                            tiempo_actual = time.time()
+                            tiempo_transcurrido = tiempo_actual - tiempo_inicio
+                            if progreso > 0:
+                                tiempo_total_estimado = tiempo_transcurrido / progreso
+                                tiempo_restante = max(0, tiempo_total_estimado - tiempo_transcurrido)
+                                estado_texto.text(f"Procesando expediente {i + 1:,} de {total_archivos:,} ({int(progreso * 100)}%) — Transcurrido: {int(tiempo_transcurrido)}s | Restante aprox: {int(tiempo_restante)}s")
 
                     if lista_resultados:
                         df_resultado = pd.DataFrame(lista_resultados)
-                        st.success(f"¡Procesamiento masivo finalizado con éxito! Registros listos: {len(df_resultado):,}")
+                        st.success(f"¡Procesamiento masivo finalizado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         st.dataframe(df_resultado.head(50), use_container_width=True)
 
                         nombre_excel = "Reporte_Masivo_Master_30k.xlsx"
@@ -234,7 +255,7 @@ else:
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
                     else:
-                        st.error("No se pudieron extraer datos válidos de los archivos.")
+                        st.error("No se pudieron capturar datos de los archivos.")
                 else:
                     st.warning("No se encontraron PDFs en el archivo ZIP.")
     else:
