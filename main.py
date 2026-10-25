@@ -106,10 +106,10 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN DEFINITIVA C5)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA BASADA EN ESTRUCTURA C5)
 # =========================================================================
 else:
-    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Definitiva C5)")
+    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Estructura Oficial C5)")
     
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Procesando con éxito...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo Tipo y Subtipo exactos...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -187,21 +187,30 @@ else:
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-                            # 1. Extracción unificada y robusta de Tipo y Subtipo
+                            # 1. Extracción exacta basada en la posición entre el Evento y Coordenadas
+                            idx_inc = -1
+                            idx_coord = -1
+                            
                             for idx, linea in enumerate(lineas):
                                 if incidente_val in linea:
-                                    t_candidato = lineas[idx + 1] if idx + 1 < len(lineas) else "N/A"
-                                    s_candidato = lineas[idx + 2] if idx + 2 < len(lineas) else "N/A"
-                                    
-                                    palabras_corte = ["de", "la", "del", "con", "sin", "en", "a", "el"]
-                                    if t_candidato.split() and t_candidato.split()[-1].lower() in palabras_corte:
-                                        if idx + 3 < len(lineas):
-                                            t_candidato = f"{t_candidato} {s_candidato}"
-                                            s_candidato = lineas[idx + 3]
-                                            
-                                    datos["Tipo"] = t_candidato
-                                    datos["Subtipo"] = s_candidato
+                                    idx_inc = idx
+                                if "COORDENADAS" in linea.upper() or "UBICACION" in linea.upper():
+                                    idx_coord = idx
                                     break
+
+                            if idx_inc != -1 and idx_coord != -1 and idx_coord > idx_inc:
+                                # Las líneas intermedias contienen Tipo y Subtipo
+                                intermedias = [l for l in lineas[idx_inc+1:idx_coord] if len(l) > 1 and "Informacion" not in l and "Evento" not in l]
+                                
+                                if len(intermedias) >= 2:
+                                    # Si hay varias líneas, filtramos y unimos inteligentemente
+                                    # Por lo general, las primeras líneas son el Tipo y las últimas el Subtipo
+                                    mitad = len(intermedias) // 2
+                                    datos["Tipo"] = " ".join(intermedias[:mitad])
+                                    datos["Subtipo"] = " ".join(intermedias[mitad:])
+                                elif len(intermedias) == 1:
+                                    datos["Tipo"] = intermedias[0]
+                                    datos["Subtipo"] = "N/A"
 
                             # 2. Búsqueda específica y limpia para Ubicación, Zona y Operador
                             for idx, linea in enumerate(lineas):
@@ -216,7 +225,7 @@ else:
                                 if ("ZP" in linea_up or "ZF" in linea_up or "TRAN" in linea_up) and len(linea) <= 12:
                                     datos["Zona"] = linea
 
-                                if any(nombre in linea_up for nombre in ["LEOPOLDO", "MARIA", "ARQUIMEDES", "RICARDO", "ANDY", "GUSTAVO", "YARIBETH", "MANOLO", "LUIS", "GERARDO", "GREGORIO", "ULISES", "ESTEBAN", "YASURI", "HUGO", "SIMON", "KEVIN", "ALBERTO", "JOEL", "MAIKEL", "DIONIS", "RODRIGUEZ", "CASAIS", "SANTAMARIA", "YORKLENIZ", "DENIS", "REYNALDO", "ORLANDO", "CARLOS"]):
+                                if any(nombre in linea_up for nombre in ["LEOPOLDO", "MARIA", "ARQUIMEDES", "RICARDO", "ANDY", "GUSTAVO", "YARIBETH", "MANOLO", "LUIS", "GERARDO", "GREGORIO", "ULISES", "ESTEBAN", "YASURI", "HUGO", "SIMON", "KEVIN", "ALBERTO", "JOEL", "MAIKEL", "DIONIS", "RODRIGUEZ", "CASAIS", "SANTAMARIA", "YORKLENIZ", "DENIS", "REYNALDO", "ORLANDO", "CARLOS", "SAAVEDRA"]):
                                     if len(linea) < 30 and "REPORTE" not in linea_up and "CIERRE" not in linea_up:
                                         datos["Operador"] = linea
 
@@ -272,12 +281,12 @@ else:
                         st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        nombre_excel = "Reporte_Masivo_Master_Final.xlsx"
+                        nombre_excel = "Reporte_Masivo_Master_Oficial.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
                             st.download_button(
-                                label="📥 Descargar Excel Maestro Final",
+                                label="📥 Descargar Excel Maestro Oficial",
                                 data=f, file_name=nombre_excel,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
