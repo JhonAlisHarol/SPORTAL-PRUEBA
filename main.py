@@ -106,7 +106,7 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA Y CONTROLADA)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA Y ROBUSTA)
 # =========================================================================
 else:
     st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Estructura Oficial C5)")
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Depurando ubicaciones...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Procesando con precisión...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -249,7 +249,6 @@ else:
                                         datos["Ubicación"] = lineas[idx+1]
                                         break
 
-                            # Si no se encontró por etiqueta, buscamos directamente una línea que tenga formato de coordenadas XY
                             if datos["Ubicación"] == "N/A":
                                 for linea in lineas:
                                     if "XY" in linea.upper() or ("(" in linea and ")" in linea and "-" in linea):
@@ -267,7 +266,7 @@ else:
                                     if len(linea) < 30 and "REPORTE" not in linea_up and "CIERRE" not in linea_up:
                                         datos["Operador"] = linea
 
-                            # 4. Extracción de fechas, horas y bitácoras
+                            # 4. Extracción de fechas, horas y bitácoras (manenjando dinámicamente expedientes cortos)
                             patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
                             matches = list(re.finditer(patron_fh, texto_completo))
                             
