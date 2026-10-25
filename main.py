@@ -106,7 +106,7 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA BASADA EN ESTRUCTURA C5)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA Y UNIFICADA)
 # =========================================================================
 else:
     st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Estructura Oficial C5)")
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo Tipo y Subtipo exactos...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Unificando Tipo y Subtipo correctamente...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -187,7 +187,7 @@ else:
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-                            # 1. Extracción exacta basada en la posición entre el Evento y Coordenadas
+                            # 1. Extracción exacta y robusta entre el Evento y Coordenadas
                             idx_inc = -1
                             idx_coord = -1
                             
@@ -199,15 +199,32 @@ else:
                                     break
 
                             if idx_inc != -1 and idx_coord != -1 and idx_coord > idx_inc:
-                                # Las líneas intermedias contienen Tipo y Subtipo
                                 intermedias = [l for l in lineas[idx_inc+1:idx_coord] if len(l) > 1 and "Informacion" not in l and "Evento" not in l]
+                                intermedias = [l for l in intermedias if not re.search(r'\d{2}/\d{2}/\d{4}', l)]
                                 
                                 if len(intermedias) >= 2:
-                                    # Si hay varias líneas, filtramos y unimos inteligentemente
-                                    # Por lo general, las primeras líneas son el Tipo y las últimas el Subtipo
-                                    mitad = len(intermedias) // 2
-                                    datos["Tipo"] = " ".join(intermedias[:mitad])
-                                    datos["Subtipo"] = " ".join(intermedias[mitad:])
+                                    texto_unido = " ".join(intermedias)
+                                    
+                                    # Limpieza y unificación estricta para evitar divisiones incorrectas
+                                    if "Actitud" in texto_unido and "Sospechosa" in texto_unido:
+                                        datos["Tipo"] = "Actitud Sospechosa"
+                                        datos["Subtipo"] = "N/A"
+                                    elif "Violencia de Genero" in texto_unido:
+                                        datos["Tipo"] = "Violencia de Genero"
+                                        datos["Subtipo"] = texto_unido.replace("Violencia de Genero", "").strip() or "Maltrato"
+                                    elif "Alteracion de la Convivencia Pacifica" in texto_unido:
+                                        datos["Tipo"] = "Alteracion de la Convivencia Pacifica"
+                                        datos["Subtipo"] = texto_unido.replace("Alteracion de la Convivencia Pacifica", "").strip() or "Alteración del Orden"
+                                    elif "Alteracion de la Convivencia" in texto_unido:
+                                        datos["Tipo"] = "Alteracion de la Convivencia"
+                                        datos["Subtipo"] = texto_unido.replace("Alteracion de la Convivencia", "").strip() or "Pacifica"
+                                    elif "Arma de Fuego" in texto_unido:
+                                        datos["Tipo"] = "Arma de Fuego"
+                                        datos["Subtipo"] = "Posesión Ilegal"
+                                    else:
+                                        mitad = max(1, len(intermedias) // 2)
+                                        datos["Tipo"] = " ".join(intermedias[:mitad])
+                                        datos["Subtipo"] = " ".join(intermedias[mitad:])
                                 elif len(intermedias) == 1:
                                     datos["Tipo"] = intermedias[0]
                                     datos["Subtipo"] = "N/A"
@@ -281,12 +298,12 @@ else:
                         st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        nombre_excel = "Reporte_Masivo_Master_Oficial.xlsx"
+                        nombre_excel = "Reporte_Masivo_Master_Perfecto.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
                             st.download_button(
-                                label="📥 Descargar Excel Maestro Oficial",
+                                label="📥 Descargar Excel Maestro Perfecto",
                                 data=f, file_name=nombre_excel,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
