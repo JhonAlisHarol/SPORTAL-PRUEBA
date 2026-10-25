@@ -106,7 +106,7 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA Y LIMPIA)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA Y CONTROLADA)
 # =========================================================================
 else:
     st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Estructura Oficial C5)")
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Procesando con precisión...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Depurando ubicaciones...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -187,7 +187,7 @@ else:
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-                            # 1. Extracción exacta entre Evento y Coordenadas
+                            # 1. Extracción exacta entre Evento y Coordenadas para Tipo y Subtipo
                             idx_inc = -1
                             idx_coord = -1
                             
@@ -204,8 +204,6 @@ else:
                                 
                                 if len(intermedias) >= 2:
                                     texto_unido = " ".join(intermedias)
-                                    
-                                    # Reglas limpias para tipos compuestos comunes y sin subtipos separados
                                     if "Actitud Sospechosa" in texto_unido or ("Actitud" in intermedias[0] and "Sospechosa" in intermedias[1]):
                                         datos["Tipo"] = "Actitud Sospechosa"
                                         datos["Subtipo"] = "N/A"
@@ -236,15 +234,31 @@ else:
                                     datos["Tipo"] = intermedias[0]
                                     datos["Subtipo"] = "N/A"
 
-                            # 2. Búsqueda específica y limpia para Ubicación, Zona y Operador
+                            # 2. Búsqueda robusta y limpia exclusivamente para Coordenadas / Ubicación Real
                             for idx, linea in enumerate(lineas):
                                 linea_up = linea.upper()
                                 
-                                if "COORDENADAS" in linea_up or "DIRECCION" in linea_up:
+                                if "COORDENADAS" in linea_up:
                                     ubi = linea
                                     if idx + 1 < len(lineas) and ("(" in lineas[idx+1] or ")" in lineas[idx+1] or len(lineas[idx+1]) < 25):
                                         ubi += " " + lineas[idx+1]
                                     datos["Ubicación"] = ubi
+                                    break
+                                elif "DIRECCION" in linea_up or "UBICACION" in linea_up:
+                                    if idx + 1 < len(lineas) and len(lineas[idx+1]) > 5 and not "ZP" in lineas[idx+1]:
+                                        datos["Ubicación"] = lineas[idx+1]
+                                        break
+
+                            # Si no se encontró por etiqueta, buscamos directamente una línea que tenga formato de coordenadas XY
+                            if datos["Ubicación"] == "N/A":
+                                for linea in lineas:
+                                    if "XY" in linea.upper() or ("(" in linea and ")" in linea and "-" in linea):
+                                        datos["Ubicación"] = linea
+                                        break
+
+                            # 3. Búsqueda específica y limpia para Zona y Operador
+                            for idx, linea in enumerate(lineas):
+                                linea_up = linea.upper()
 
                                 if ("ZP" in linea_up or "ZF" in linea_up or "TRAN" in linea_up) and len(linea) <= 12:
                                     datos["Zona"] = linea
@@ -253,7 +267,7 @@ else:
                                     if len(linea) < 30 and "REPORTE" not in linea_up and "CIERRE" not in linea_up:
                                         datos["Operador"] = linea
 
-                            # 3. Extracción de fechas, horas y bitácoras
+                            # 4. Extracción de fechas, horas y bitácoras
                             patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
                             matches = list(re.finditer(patron_fh, texto_completo))
                             
