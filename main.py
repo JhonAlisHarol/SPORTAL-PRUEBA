@@ -106,10 +106,10 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN UNIFICADA DE TIPO Y SUBTIPO)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN DEFINITIVA C5)
 # =========================================================================
 else:
-    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Unificada C5)")
+    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Definitiva C5)")
     
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo Tipo y Subtipo unificados...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Procesando con éxito...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -193,7 +193,6 @@ else:
                                     t_candidato = lineas[idx + 1] if idx + 1 < len(lineas) else "N/A"
                                     s_candidato = lineas[idx + 2] if idx + 2 < len(lineas) else "N/A"
                                     
-                                    # Unir si el tipo se corta con preposiciones/artículos (ej. "Arma de" + "Fuego")
                                     palabras_corte = ["de", "la", "del", "con", "sin", "en", "a", "el"]
                                     if t_candidato.split() and t_candidato.split()[-1].lower() in palabras_corte:
                                         if idx + 3 < len(lineas):
@@ -273,12 +272,12 @@ else:
                         st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        nombre_excel = "Reporte_Masivo_Master_Perfecto.xlsx"
+                        nombre_excel = "Reporte_Masivo_Master_Final.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
                             st.download_button(
-                                label="📥 Descargar Excel Maestro Perfecto",
+                                label="📥 Descargar Excel Maestro Final",
                                 data=f, file_name=nombre_excel,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
