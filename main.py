@@ -6,6 +6,8 @@ import pandas as pd
 from pypdf import PdfReader
 import streamlit as st
 
+# Configuración automática para permitir la carga de archivos ZIP pesados (hasta 2 GB)
+st.set_option("server.maxUploadSize", 2048)
 st.set_page_config(page_title="Centro de Procesamiento S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Sistema Integral de Procesamiento S.PORTAL")
@@ -22,7 +24,7 @@ modo = st.sidebar.selectbox(
 st.markdown("---")
 
 # =========================================================================
-# MODULO 1: PROCESADOR DE LISTADOS CONSOLIDADOS (INTACTO)
+# MODULO 1: PROCESADOR DE LISTADOS CONSOLIDADOS (INTACTO CON ENLACES)
 # =========================================================================
 if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
     st.header("📄 Extractor de Listados Consolidados Masivos")
@@ -106,7 +108,7 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR REAL (CON LECTURA PROFUNDA DE PDFs)
+# MODULO 2: PROCESADOR MASIVO TABULAR REAL (CON SOPORTE DE ARCHIVOS GRANDES)
 # =========================================================================
 else:
     st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Masiva C5)")
@@ -122,7 +124,7 @@ else:
     st.markdown("---")
 
     archivo_zip = st.file_uploader(
-        "Sube tu paquete comprimido (.zip) con los expedientes individuales:", 
+        "Sube tu paquete comprimido (.zip) con los expedientes individuales (Soporta archivos pesados):", 
         type=["zip"]
     )
 
@@ -195,7 +197,6 @@ else:
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-                            # Búsqueda inteligente dentro del texto del PDF individual
                             for idx, linea in enumerate(lineas):
                                 linea_up = linea.upper()
                                 if incidente_val in linea:
@@ -205,7 +206,6 @@ else:
                                     if idx + 4 < len(lineas): datos["Zona"] = lineas[idx + 4]
                                     if idx + 5 < len(lineas): datos["Operador"] = lineas[idx + 5]
 
-                            # Extracción de fechas y horas de bitácora
                             patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
                             matches = list(re.finditer(patron_fh, texto_completo))
                             
@@ -231,7 +231,6 @@ else:
 
                         lista_resultados.append(datos)
 
-                        # Actualización en vivo de la tabla en pantalla y barra de progreso cada 100 archivos
                         if i % 100 == 0 or i == total_archivos - 1:
                             porcentaje = (i + 1) / total_archivos
                             barra_progreso.progress(porcentaje)
