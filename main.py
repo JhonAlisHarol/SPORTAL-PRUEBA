@@ -106,10 +106,10 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA Y ALINEADA)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN PERFECTA DE TIPO Y SUBTIPO)
 # =========================================================================
 else:
-    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Alineada C5)")
+    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Perfecta C5)")
     
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo con alineación exacta...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo Tipo y Subtipo completos...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -187,34 +187,39 @@ else:
 
                             lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
 
-                            # 1. Extracción precisa de Tipo y Subtipo (líneas posteriores al código de incidente)
+                            # 1. Extracción robusta y completa de Tipo y Subtipo uniendo líneas partidas si es necesario
                             for idx, linea in enumerate(lineas):
                                 if incidente_val in linea:
-                                    if idx + 1 < len(lineas): datos["Tipo"] = lineas[idx + 1]
-                                    if idx + 2 < len(lineas): datos["Subtipo"] = lineas[idx + 2]
+                                    t_candidato = lineas[idx + 1] if idx + 1 < len(lineas) else "N/A"
+                                    s_candidato = lineas[idx + 2] if idx + 2 < len(lineas) else "N/A"
+                                    
+                                    # Si el tipo se cortó (ej. "Violencia de"), le pegamos la siguiente palabra
+                                    if t_candidato in ["Violencia de", "Alteracion de la", "Accidente Sin"] and idx + 3 < len(lineas):
+                                        t_candidato += " " + lineas[idx + 2]
+                                        s_candidato = lineas[idx + 3]
+                                        
+                                    datos["Tipo"] = t_candidato
+                                    datos["Subtipo"] = s_candidato
                                     break
 
                             # 2. Búsqueda específica y limpia para Ubicación, Zona y Operador
                             for idx, linea in enumerate(lineas):
                                 linea_up = linea.upper()
                                 
-                                # Ubicación (coordenadas o direcciones)
                                 if "COORDENADAS" in linea_up or "DIRECCION" in linea_up:
                                     ubi = linea
                                     if idx + 1 < len(lineas) and ("(" in lineas[idx+1] or ")" in lineas[idx+1] or len(lineas[idx+1]) < 25):
                                         ubi += " " + lineas[idx+1]
                                     datos["Ubicación"] = ubi
 
-                                # Zona (ej. códigos ZP, ZF, TRAN, etc.)
                                 if ("ZP" in linea_up or "ZF" in linea_up or "TRAN" in linea_up) and len(linea) <= 12:
                                     datos["Zona"] = linea
 
-                                # Operador (detección por nombres comunes en reportes C5)
                                 if any(nombre in linea_up for nombre in ["LEOPOLDO", "MARIA", "ARQUIMEDES", "RICARDO", "ANDY", "GUSTAVO", "YARIBETH", "MANOLO", "LUIS", "GERARDO", "GREGORIO", "ULISES", "ESTEBAN", "YASURI", "HUGO", "SIMON", "KEVIN", "ALBERTO", "JOEL", "MAIKEL", "DIONIS", "RODRIGUEZ", "CASAIS", "SANTAMARIA", "YORKLENIZ", "DENIS", "REYNALDO", "ORLANDO", "CARLOS"]):
                                     if len(linea) < 30 and "REPORTE" not in linea_up and "CIERRE" not in linea_up:
                                         datos["Operador"] = linea
 
-                            # 3. Extracción de fechas, horas y bitácoras de reportes de forma secuencial limpia
+                            # 3. Extracción de fechas, horas y bitácoras
                             patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
                             matches = list(re.finditer(patron_fh, texto_completo))
                             
@@ -266,12 +271,12 @@ else:
                         st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        nombre_excel = "Reporte_Masivo_Master_Perfecto.xlsx"
+                        nombre_excel = "Reporte_Masivo_Master_Impecable.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
                             st.download_button(
-                                label="📥 Descargar Excel Maestro Perfecto",
+                                label="📥 Descargar Excel Maestro Impecable",
                                 data=f, file_name=nombre_excel,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
