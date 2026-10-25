@@ -106,10 +106,10 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN EXACTA Y SIN DESFASE)
+# MODULO 2: PROCESADOR MASIVO TABULAR (EXTRACCIÓN TOTAL DE INFORMACIÓN)
 # =========================================================================
 else:
-    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Estructura Oficial C5)")
+    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Captura Total C5)")
     
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
@@ -153,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Sincronizando fechas y horas...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Extrayendo toda la información disponible...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -266,7 +266,7 @@ else:
                                     if len(linea) < 30 and "REPORTE" not in linea_up and "CIERRE" not in linea_up:
                                         datos["Operador"] = linea
 
-                            # 4. Extracción estricta y sincronizada de fechas y horas con validación de hora real
+                            # 4. Extracción total de fechas, horas y bitácoras (capturando todo el texto disponible)
                             patron_fh = r'(\d{2}/\d{2}/\d{2,4})\s+(\d{1,2}:\d{2}:\d{2})'
                             matches = list(re.finditer(patron_fh, texto_completo))
                             
@@ -281,7 +281,7 @@ else:
                                 if key == f"{datos['Fecha Creación']} {datos['Hora Creación']}" and len(seen) == 0:
                                     seen.add(key)
                                     continue
-                                if key not in seen or len(marcas_tiempo) < 4:
+                                if key not in seen:
                                     seen.add(key)
                                     marcas_tiempo.append({"fecha": m.group(1), "hora": m.group(2), "pos": m.start()})
 
@@ -298,7 +298,8 @@ else:
                                 frag = re.sub(r'^(Cierre Incidente|Comentario Del Usuario|Reporte).*?\n', '', frag, flags=re.IGNORECASE).strip()
                                 frag = re.sub(r'\s+', ' ', frag).strip()
                                 
-                                datos[f"Reporte {idx_m + 1}"] = (frag[:300] if len(frag) > 2 else "Seguimiento operativo")
+                                # Capturar todo el texto disponible sin importar cuán corto sea
+                                datos[f"Reporte {idx_m + 1}"] = (frag[:500] if len(frag) > 0 else "Seguimiento operativo")
 
                         except Exception:
                             pass
@@ -318,12 +319,12 @@ else:
                         st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        nombre_excel = "Reporte_Masivo_Master_Sincronizado.xlsx"
+                        nombre_excel = "Reporte_Masivo_Master_Total.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
                             st.download_button(
-                                label="📥 Descargar Excel Maestro Sincronizado",
+                                label="📥 Descargar Excel Maestro Total",
                                 data=f, file_name=nombre_excel,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
