@@ -9,7 +9,7 @@ import streamlit as st
 st.set_page_config(page_title="Centro de Procesamiento S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Sistema Integral de Procesamiento S.PORTAL")
-st.write("Herramienta avanzada: Procesamiento masivo optimizado de expedientes con vista en vivo.")
+st.write("Herramienta avanzada: Procesamiento masivo con extracción real y visualización en vivo.")
 
 modo = st.sidebar.selectbox(
     "Selecciona el Modulo de Trabajo:",
@@ -98,10 +98,10 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO CON EXTRACCIÓN MAESTRA GARANTIZADA
+# MODULO 2: PROCESADOR MASIVO CON EXTRACCIÓN REAL Y VISTA EN VIVO
 # =========================================================================
 else:
-    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo")
+    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Datos Reales)")
     
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
@@ -121,7 +121,7 @@ else:
     if archivo_zip:
         st.info(f"Paquete detectado: {archivo_zip.name} ({round(archivo_zip.size / (1024*1024), 2)} MB).")
         
-        if st.button("🚀 Iniciar Procesamiento Masivo Definitivo"):
+        if st.button("🚀 Iniciar Procesamiento Masivo Real"):
             with tempfile.TemporaryDirectory() as temp_dir:
                 ruta_zip = os.path.join(temp_dir, "paquete.zip")
                 
@@ -145,35 +145,30 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Procesando registros...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Leyendo datos reales...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
                     lista_resultados = []
 
-                    for i, (ruta_pdf, nombre_original) in enumerate(archivos_pdf):
-                        # Extraer código del nombre del archivo de forma infalible
-                        incidente_val = "S/N"
-                        match_arch = re.search(r'(P\d{10,12})', nombre_original)
-                        if match_arch:
-                            incidente_val = match_arch.group(1)
+                    ops = ["ENRIQUE CACERES", "VALERY VELASQUEZ", "LEONARDO CASASOLA", "IVETTE GIERHART", "JOAQUIN CHI", "DALILA TREJOS", "HERMOGENES SANJUR", "ANTONIO PATRICIO", "RICARDO EMILIO"]
 
+                    for i, (ruta_pdf, nombre_original) in enumerate(archivos_pdf):
                         datos = {
                             "Archivo": nombre_original,
-                            "Incidente": incidente_val, 
-                            "Tipo": "Reporte Individual S.PORTAL", 
-                            "Subtipo": "Expediente C5", 
-                            "Ubicación": "Consultar Expediente PDF", 
-                            "Zona": "N/A", 
-                            "Operador": "Asignado en C5",
-                            "Fecha Creación": "01/01/2026", "Hora Creación": "00:00:00",
-                            "Fecha 1": "N/A", "Hora 1": "N/A", "Reporte 1": f"Expediente oficial del incidente {incidente_val}",
+                            "Incidente": "S/N", "Tipo": "N/A", "Subtipo": "N/A", "Ubicación": "N/A", "Zona": "N/A", "Operador": "N/A",
+                            "Fecha Creación": "N/A", "Hora Creación": "N/A",
+                            "Fecha 1": "N/A", "Hora 1": "N/A", "Reporte 1": "N/A",
                             "Fecha 2": "N/A", "Hora 2": "N/A", "Reporte 2": "N/A",
                             "Fecha 3": "N/A", "Hora 3": "N/A", "Reporte 3": "N/A",
                             "Fecha 4": "N/A", "Hora 4": "N/A", "Reporte 4": "N/A"
                         }
 
-                        # Intentar extraer texto adicional si el PDF lo permite
+                        # 1. Incidente desde el nombre del archivo como base segura
+                        match_arch = re.search(r'(P\d{10,12})', nombre_original)
+                        if match_arch:
+                            datos["Incidente"] = match_arch.group(1)
+
                         try:
                             reader = PdfReader(ruta_pdf)
                             texto_completo = ""
@@ -181,15 +176,80 @@ else:
                                 t = pagina.extract_text()
                                 if t: texto_completo += t + "\n"
 
-                            if len(texto_completo.strip()) > 10:
-                                datos["Tipo"] = "Incidente Registrado S.PORTAL"
+                            lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
+
+                            # 2. Buscar código de incidente en el texto interno
+                            match_inc = re.search(r'(P\d{10,12})', texto_completo)
+                            if match_inc:
+                                datos["Incidente"] = match_inc.group(1)
+
+                            # 3. Extracción de Tipo, Subtipo, Zona, Ubicación y Operador basados en la estructura real
+                            for idx, linea in enumerate(lineas):
+                                linea_up = linea.upper()
+
+                                # Operador
+                                for op in ops:
+                                    if op in linea_up:
+                                        datos["Operador"] = op
+
+                                # Zona
+                                if (re.search(r'\b\d{0,2}[A-Z]{1,3}\b', linea) and len(linea) <= 15) and ("ZP" in linea_up or "ZF" in linea_up or "ZONA" in linea_up):
+                                    datos["Zona"] = linea
+
+                                # Coordenadas / Ubicación
+                                if "COORDENADAS" in linea_up or "XY" in linea_up:
+                                    datos["Ubicación"] = linea
+                                    if idx + 1 < len(lineas) and ("(" in lineas[idx+1] or ")" in lineas[idx+1]):
+                                        datos["Ubicación"] += " " + lineas[idx+1]
+
+                                # Tipo y Subtipo a partir de la línea del incidente
+                                if datos["Incidente"] in linea:
+                                    if idx + 1 < len(lineas) and datos["Tipo"] == "N/A":
+                                        datos["Tipo"] = lineas[idx + 1]
+                                    if idx + 2 < len(lineas) and datos["Subtipo"] == "N/A":
+                                        datos["Subtipo"] = lineas[idx + 2]
+
+                            # Si no se asignó por coincidencia exacta, tomar líneas descriptivas válidas del encabezado
+                            if datos["Tipo"] == "N/A" and len(lineas) > 2:
+                                for l in lineas:
+                                    if not re.search(r'P\d{10,12}', l) and "S.PORTAL" not in l.upper() and "PAGINA" not in l.upper() and "CENTRO" not in l.upper() and len(l) > 3:
+                                        if datos["Tipo"] == "N/A":
+                                            datos["Tipo"] = l
+                                            continue
+                                        elif datos["Subtipo"] == "N/A":
+                                            datos["Subtipo"] = l
+                                            break
+
+                            # 4. Fechas, horas y bitácoras de reportes (1 al 4)
+                            patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
+                            matches = list(re.finditer(patron_fh, texto_completo))
+                            
+                            if matches:
+                                datos["Fecha Creación"] = matches[0].group(1)
+                                datos["Hora Creación"] = matches[0].group(2)
+
+                            marcas_tiempo = [{"fecha": m.group(1), "hora": m.group(2), "pos": m.start()} for m in matches if not (m.group(1) == datos["Fecha Creación"] and m.group(2) == datos["Hora Creación"] and len(matches) == 1)]
+                            
+                            for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
+                                datos[f"Fecha {idx_m}"] = marca["fecha"]
+                                datos[f"Hora {idx_m}"] = marca["hora"]
+
+                            for idx_m in range(len(marcas_tiempo)):
+                                if idx_m + 1 > 4: break
+                                inicio = marcas_tiempo[idx_m]["pos"] + len(f"{marcas_tiempo[idx_m]['fecha']} {marcas_tiempo[idx_m]['hora']}")
+                                fin = marcas_tiempo[idx_m + 1]["pos"] if idx_m + 1 < len(marcas_tiempo) else len(texto_completo)
+                                frag = texto_completo[inicio:fin].replace("Comentario Del Usuario", "").replace("\n", " ").strip()
+                                if datos["Operador"] != "N/A": 
+                                    frag = frag.replace(datos["Operador"], "").strip()
+                                datos[f"Reporte {idx_m + 1}"] = frag[:400]
+
                         except Exception:
                             pass
 
                         lista_resultados.append(datos)
 
-                        # Actualizar en vivo la tabla en pantalla y la barra de progreso
-                        if i % 100 == 0 or i == total_archivos - 1:
+                        # Actualización en vivo de la tabla en pantalla y barra de progreso
+                        if i % 50 == 0 or i == total_archivos - 1:
                             porcentaje = (i + 1) / total_archivos
                             barra_progreso.progress(porcentaje)
                             texto_estado.text(f"⏳ Procesando expediente {i + 1:,} de {total_archivos:,} ({int(porcentaje * 100)}%)...")
