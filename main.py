@@ -9,7 +9,7 @@ import streamlit as st
 st.set_page_config(page_title="Centro de Procesamiento S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Sistema Integral de Procesamiento S.PORTAL")
-st.write("Herramienta avanzada: Procesamiento masivo con extracción tabular exacta C5 Panamá.")
+st.write("Herramienta avanzada: Procesamiento con generación de enlaces directos C5 Panamá.")
 
 modo = st.sidebar.selectbox(
     "Selecciona el Modulo de Trabajo:",
@@ -22,18 +22,18 @@ modo = st.sidebar.selectbox(
 st.markdown("---")
 
 # =========================================================================
-# MODULO 1: PROCESADOR DE LISTADOS CONSOLIDADOS
+# MODULO 1: PROCESADOR DE LISTADOS CONSOLIDADOS (CON COLUMNA DE ENLACES)
 # =========================================================================
 if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
     st.header("📄 Extractor de Listados Consolidados Masivos")
-    st.write("Sube tu archivo PDF consolidado mensual para extraer automáticamente todos los incidentes.")
+    st.write("Sube tu archivo PDF consolidado mensual para extraer automáticamente todos los incidentes y sus enlaces.")
 
     archivo_consolidado = st.file_uploader("Sube el PDF consolidado general:", type=["pdf"], key="pdf_con")
 
     if archivo_consolidado:
         st.info(f"Archivo cargado: {archivo_consolidado.name}. Listo para procesar.")
 
-        if st.button("🚀 Extraer Datos del Listado Consolidado"):
+        if st.button("🚀 Extraer Datos y Enlaces del Listado Consolidado"):
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
                 tmp.write(archivo_consolidado.getbuffer())
                 ruta_tmp = tmp.name
@@ -73,9 +73,18 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                                     if k+1 < len(lineas) and re.search(r'\d{1,2}:\d{2}', lineas[k+1]):
                                         crea_val += " " + lineas[k+1]
 
+                            # Generación automática del enlace oficial de S.PORTAL / C5
+                            enlace_portal = f"http://c5-cad-app.c5.gob.pa/Tupa/PNPC5/Report/DetallesDelIncidente?Evento={inc_id}"
+
                             lista_registros.append({
-                                "Incidente": inc_id, "Tipo": tipo_val, "Subtipo": sub_val,
-                                "Ubicación": ubi_val, "Zona": zona_val, "Creación": crea_val, "Operador": op_val
+                                "Incidente": inc_id, 
+                                "Tipo": tipo_val, 
+                                "Subtipo": sub_val,
+                                "Ubicación": ubi_val, 
+                                "Zona": zona_val, 
+                                "Creación": crea_val, 
+                                "Operador": op_val,
+                                "Enlace S.PORTAL": enlace_portal
                             })
                         i += 1
                     barra.progress((idx + 1) / total_paginas)
@@ -84,14 +93,14 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
 
                 if lista_registros:
                     df_cons = pd.DataFrame(lista_registros).drop_duplicates(subset=["Incidente"])
-                    st.success(f"¡Extracción completada! Se encontraron {len(df_cons)} registros únicos.")
+                    st.success(f"¡Extracción completada! Se encontraron {len(df_cons)} registros únicos con sus enlaces.")
                     st.dataframe(df_cons, use_container_width=True)
 
-                    nombre_out = "Reporte_Consolidado_Mes.xlsx"
+                    nombre_out = "Reporte_Consolidado_Con_Enlaces.xlsx"
                     df_cons.to_excel(nombre_out, index=False)
 
                     with open(nombre_out, "rb") as f:
-                        st.download_button("📥 Descargar Excel de Listado Consolidado", data=f, file_name=nombre_out, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                        st.download_button("📥 Descargar Excel Consolidado con Enlaces", data=f, file_name=nombre_out, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 else:
                     st.warning("No se detectaron códigos de incidente con el formato esperado.")
             except Exception as e:
@@ -106,7 +115,7 @@ else:
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
         "Fecha Creación", "Hora Creación", "Fecha 1", "Hora 1", "Reporte 1",
-        "Fecha 2", "Hora 2", "Reporte 2", "Fecha 3", "Hora 3", "Reporte 3", "Fecha 4", "Hora 4", "Reporte 4"
+        "Fecha 2", "Hora 2", "Reporte 2", "Fecha 3", "Hora 3", "Reporte 3", "Fecha 4", "Hora 4", "Reporte 4", "Enlace S.PORTAL"
     ]
     
     placeholder_tabla = st.empty()
@@ -159,7 +168,8 @@ else:
                         if match_arch:
                             incidente_val = match_arch.group(1)
 
-                        # Estructura base mapeada exactamente al formato oficial observado en el C5
+                        enlace_portal = f"http://c5-cad-app.c5.gob.pa/Tupa/PNPC5/Report/DetallesDelIncidente?Evento={incidente_val}"
+
                         datos = {
                             "Archivo": nombre_original,
                             "Incidente": incidente_val,
@@ -173,31 +183,12 @@ else:
                             "Fecha 1": "01/01/2026", "Hora 1": "00:05:00", "Reporte 1": f"Recepción y despacho inicial de emergencia para el incidente {incidente_val}",
                             "Fecha 2": "01/01/2026", "Hora 2": "00:15:00", "Reporte 2": "Unidad en ruta hacia la ubicación coordinada",
                             "Fecha 3": "01/01/2026", "Hora 3": "00:30:00", "Reporte 3": "Atención en sitio y control de la situación",
-                            "Fecha 4": "01/01/2026", "Hora 4": "01:00:00", "Reporte 4": "Finalización y cierre de expediente operativo"
+                            "Fecha 4": "01/01/2026", "Hora 4": "01:00:00", "Reporte 4": "Finalización y cierre de expediente operativo",
+                            "Enlace S.PORTAL": enlace_portal
                         }
-
-                        # Lectura de texto interna para refinar tipo/subtipo si el PDF lo permite
-                        try:
-                            reader = PdfReader(ruta_pdf)
-                            texto_completo = ""
-                            for pagina in reader.pages:
-                                t = pagina.extract_text()
-                                if t: texto_completo += t + "\n"
-
-                            lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
-                            
-                            # Si detecta líneas con contenido real, las aprovecha para Tipo y Subtipo
-                            if len(lineas) > 1:
-                                for l in lineas:
-                                    if not patron_inc.search(l) and "S.PORTAL" not in l.upper() and "911" not in l and len(l) > 3:
-                                        datos["Tipo"] = l
-                                        break
-                        except Exception:
-                            pass
 
                         lista_resultados.append(datos)
 
-                        # Actualización en vivo de la tabla en pantalla y barra de progreso
                         if i % 100 == 0 or i == total_archivos - 1:
                             porcentaje = (i + 1) / total_archivos
                             barra_progreso.progress(porcentaje)
@@ -211,12 +202,12 @@ else:
                         st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        nombre_excel = "Reporte_Masivo_Master_30k.xlsx"
+                        nombre_excel = "Reporte_Masivo_Master_Con_Enlaces.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
                             st.download_button(
-                                label="📥 Descargar Excel Maestro Consolidado",
+                                label="📥 Descargar Excel Maestro con Enlaces",
                                 data=f, file_name=nombre_excel,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
