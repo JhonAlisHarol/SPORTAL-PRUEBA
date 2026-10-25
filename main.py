@@ -9,7 +9,7 @@ import streamlit as st
 st.set_page_config(page_title="Centro de Procesamiento S.PORTAL", page_icon="📊", layout="wide")
 
 st.title("📊 Sistema Integral de Procesamiento S.PORTAL")
-st.write("Herramienta avanzada: Procesamiento con generación de enlaces directos C5 Panamá.")
+st.write("Herramienta avanzada: Procesamiento masivo de expedientes con extracción tabular completa C5 Panamá.")
 
 modo = st.sidebar.selectbox(
     "Selecciona el Modulo de Trabajo:",
@@ -22,7 +22,7 @@ modo = st.sidebar.selectbox(
 st.markdown("---")
 
 # =========================================================================
-# MODULO 1: PROCESADOR DE LISTADOS CONSOLIDADOS (CON COLUMNA DE ENLACES)
+# MODULO 1: PROCESADOR DE LISTADOS CONSOLIDADOS (INTACTO)
 # =========================================================================
 if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
     st.header("📄 Extractor de Listados Consolidados Masivos")
@@ -73,7 +73,6 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                                     if k+1 < len(lineas) and re.search(r'\d{1,2}:\d{2}', lineas[k+1]):
                                         crea_val += " " + lineas[k+1]
 
-                            # Generación automática del enlace oficial de S.PORTAL / C5
                             enlace_portal = f"http://c5-cad-app.c5.gob.pa/Tupa/PNPC5/Report/DetallesDelIncidente?Evento={inc_id}"
 
                             lista_registros.append({
@@ -107,10 +106,10 @@ if modo == "1. Procesador de Listados Consolidados (Ej: ENERO.pdf)":
                 st.error(f"Error al procesar: {e}")
 
 # =========================================================================
-# MODULO 2: PROCESADOR MASIVO TABULAR (CON ESTRUCTURA OFICIAL C5)
+# MODULO 2: PROCESADOR MASIVO TABULAR REAL (CON LECTURA PROFUNDA DE PDFs)
 # =========================================================================
 else:
-    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Estructura C5 Oficial)")
+    st.subheader("📋 Vista Previa de la Tabla Maestra en Vivo (Extracción Masiva C5)")
     
     columnas_base = [
         "Archivo", "Incidente", "Tipo", "Subtipo", "Ubicación", "Zona", "Operador",
@@ -130,7 +129,7 @@ else:
     if archivo_zip:
         st.info(f"Paquete detectado: {archivo_zip.name} ({round(archivo_zip.size / (1024*1024), 2)} MB).")
         
-        if st.button("🚀 Iniciar Procesamiento Masivo Tabular"):
+        if st.button("🚀 Iniciar Procesamiento Masivo Definitivo"):
             with tempfile.TemporaryDirectory() as temp_dir:
                 ruta_zip = os.path.join(temp_dir, "paquete.zip")
                 
@@ -154,7 +153,7 @@ else:
                 total_archivos = len(archivos_pdf)
                 
                 if total_archivos > 0:
-                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Procesando estructura C5...")
+                    st.success(f"¡Se encontraron {total_archivos:,} archivos PDF! Procesando extracción completa...")
                     
                     barra_progreso = st.progress(0)
                     texto_estado = st.empty()
@@ -173,22 +172,66 @@ else:
                         datos = {
                             "Archivo": nombre_original,
                             "Incidente": incidente_val,
-                            "Tipo": "Pánico / Atención C5",
+                            "Tipo": "N/A",
                             "Subtipo": "N/A",
-                            "Ubicación": "COORDENADAS XY (CENTRO DE OPERACIÓN NACIONAL)",
-                            "Zona": "21ZP",
-                            "Operador": "LEOPOLDO SERRANO BROWN",
-                            "Fecha Creación": "01/01/2026",
-                            "Hora Creación": "00:01:13",
-                            "Fecha 1": "01/01/2026", "Hora 1": "00:05:00", "Reporte 1": f"Recepción y despacho inicial de emergencia para el incidente {incidente_val}",
-                            "Fecha 2": "01/01/2026", "Hora 2": "00:15:00", "Reporte 2": "Unidad en ruta hacia la ubicación coordinada",
-                            "Fecha 3": "01/01/2026", "Hora 3": "00:30:00", "Reporte 3": "Atención en sitio y control de la situación",
-                            "Fecha 4": "01/01/2026", "Hora 4": "01:00:00", "Reporte 4": "Finalización y cierre de expediente operativo",
+                            "Ubicación": "N/A",
+                            "Zona": "N/A",
+                            "Operador": "N/A",
+                            "Fecha Creación": "N/A",
+                            "Hora Creación": "N/A",
+                            "Fecha 1": "N/A", "Hora 1": "N/A", "Reporte 1": "N/A",
+                            "Fecha 2": "N/A", "Hora 2": "N/A", "Reporte 2": "N/A",
+                            "Fecha 3": "N/A", "Hora 3": "N/A", "Reporte 3": "N/A",
+                            "Fecha 4": "N/A", "Hora 4": "N/A", "Reporte 4": "N/A",
                             "Enlace S.PORTAL": enlace_portal
                         }
 
+                        try:
+                            reader = PdfReader(ruta_pdf)
+                            texto_completo = ""
+                            for pagina in reader.pages:
+                                t = pagina.extract_text()
+                                if t: texto_completo += t + "\n"
+
+                            lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
+
+                            # Búsqueda inteligente dentro del texto del PDF individual
+                            for idx, linea in enumerate(lineas):
+                                linea_up = linea.upper()
+                                if incidente_val in linea:
+                                    if idx + 1 < len(lineas): datos["Tipo"] = lineas[idx + 1]
+                                    if idx + 2 < len(lineas): datos["Subtipo"] = lineas[idx + 2]
+                                    if idx + 3 < len(lineas): datos["Ubicación"] = lineas[idx + 3]
+                                    if idx + 4 < len(lineas): datos["Zona"] = lineas[idx + 4]
+                                    if idx + 5 < len(lineas): datos["Operador"] = lineas[idx + 5]
+
+                            # Extracción de fechas y horas de bitácora
+                            patron_fh = r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
+                            matches = list(re.finditer(patron_fh, texto_completo))
+                            
+                            if matches:
+                                datos["Fecha Creación"] = matches[0].group(1)
+                                datos["Hora Creación"] = matches[0].group(2)
+
+                            marcas_tiempo = [{"fecha": m.group(1), "hora": m.group(2), "pos": m.start()} for m in matches if not (m.group(1) == datos["Fecha Creación"] and m.group(2) == datos["Hora Creación"] and len(matches) == 1)]
+                            
+                            for idx_m, marca in enumerate(marcas_tiempo[:4], start=1):
+                                datos[f"Fecha {idx_m}"] = marca["fecha"]
+                                datos[f"Hora {idx_m}"] = marca["hora"]
+
+                            for idx_m in range(len(marcas_tiempo)):
+                                if idx_m + 1 > 4: break
+                                inicio = marcas_tiempo[idx_m]["pos"] + len(f"{marcas_tiempo[idx_m]['fecha']} {marcas_tiempo[idx_m]['hora']}")
+                                fin = marcas_tiempo[idx_m + 1]["pos"] if idx_m + 1 < len(marcas_tiempo) else len(texto_completo)
+                                frag = texto_completo[inicio:fin].replace("Comentario Del Usuario", "").replace("\n", " ").strip()
+                                datos[f"Reporte {idx_m + 1}"] = frag[:400]
+
+                        except Exception:
+                            pass
+
                         lista_resultados.append(datos)
 
+                        # Actualización en vivo de la tabla en pantalla y barra de progreso cada 100 archivos
                         if i % 100 == 0 or i == total_archivos - 1:
                             porcentaje = (i + 1) / total_archivos
                             barra_progreso.progress(porcentaje)
@@ -202,12 +245,12 @@ else:
                         st.success(f"¡Procesamiento masivo completado con éxito! Total de expedientes capturados: {len(df_resultado):,}")
                         placeholder_tabla.dataframe(df_resultado, use_container_width=True)
 
-                        nombre_excel = "Reporte_Masivo_Master_Con_Enlaces.xlsx"
+                        nombre_excel = "Reporte_Masivo_Master_Definitivo.xlsx"
                         df_resultado.to_excel(nombre_excel, index=False)
 
                         with open(nombre_excel, "rb") as f:
                             st.download_button(
-                                label="📥 Descargar Excel Maestro con Enlaces",
+                                label="📥 Descargar Excel Maestro Definitivo",
                                 data=f, file_name=nombre_excel,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
